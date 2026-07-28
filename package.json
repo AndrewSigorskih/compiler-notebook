@@ -6,6 +6,10 @@
   "license": "MIT",
   "publisher": "andrewsigorskih",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AndrewSigorskih/compiler-notebook.git"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -34,6 +38,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
+    "package": "NODE_OPTIONS=--require=./scripts/node18-file-polyfill.js npx --yes @vscode/vsce@2.32.0 package --skip-license",
     "test": "node --test out/test",
     "pretest": "npm run compile"
   },
