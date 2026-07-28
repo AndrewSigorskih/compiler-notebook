@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "cells": [
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "value": "# Hello, Compiler Notebook\n\nPhase 1: the whole notebook is one project, built with a hardcoded `g++`.\nPress the Run button on the C++ cell below."
+    },
+    {
+      "kind": "code",
+      "language": "cpp",
+      "value": "#pragma once\n\n#include <string>\n\ninline std::string greeting() {\n    return \"hello from a compiler notebook\";\n}\n",
+      "metadata": {
+        "role": "file",
+        "filename": "greeting.hpp"
+      }
+    },
+    {
+      "kind": "code",
+      "language": "cpp",
+      "value": "#include <iostream>\n\n#include \"greeting.hpp\"\n\nint main() {\n    std::cout << greeting() << '\\n';\n    return 0;\n}\n",
+      "metadata": {
+        "role": "file",
+        "filename": "main.cpp"
+      }
+    }
+  ]
+}

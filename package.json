@@ -1,0 +1,45 @@
+{
+  "name": "compiler-notebook",
+  "displayName": "Compiler Notebook",
+  "description": "Jupyter-like notebooks for compiled languages (C++, Rust, Zig)",
+  "version": "0.0.1",
+  "license": "MIT",
+  "publisher": "andrewsigorskih",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Notebooks",
+    "Programming Languages"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onNotebook:compiler-notebook"
+  ],
+  "contributes": {
+    "notebooks": [
+      {
+        "type": "compiler-notebook",
+        "displayName": "Compiler Notebook",
+        "selector": [
+          {
+            "filenamePattern": "*.cnb"
+          }
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile",
+    "test": "node --test out/test",
+    "pretest": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.5.4"
+  }
+}
