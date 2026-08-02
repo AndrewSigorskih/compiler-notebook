@@ -184,13 +184,14 @@ describe('resolveProjects', () => {
 		assert.strictEqual(result.projects[0].spec.compiler, 'g++');
 	});
 
-	test('buildspec parse warnings become diagnostics on the buildspec cell', () => {
+	test('buildspec parse warnings become diagnostics on the offending line', () => {
 		const spec = code('toml', 'compiler = "g++"\nnonsense = 1\n');
 		const result = resolveProjects([spec, code('cpp', 'int main() {}')]);
 
 		assert.strictEqual(result.diagnostics.length, 1);
 		assert.strictEqual(result.diagnostics[0].cell, spec);
 		assert.match(result.diagnostics[0].message, /unknown buildspec key "nonsense"/);
+		assert.strictEqual(result.diagnostics[0].line, 1);
 	});
 
 	test('explicit metadata beats the @file directive', () => {

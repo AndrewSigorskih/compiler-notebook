@@ -15,12 +15,18 @@ describe('parseToml', () => {
 			].join('\n')
 		);
 
-		assert.strictEqual(entries.get('compiler'), 'g++');
-		assert.deepStrictEqual(entries.get('flags'), ['-std=c++23', '-O2']);
-		assert.strictEqual(entries.get('verbose'), true);
-		assert.strictEqual(entries.get('jobs'), 4);
-		assert.strictEqual(entries.get('literal'), 'no \\escapes');
+		assert.strictEqual(entries.get('compiler')?.value, 'g++');
+		assert.deepStrictEqual(entries.get('flags')?.value, ['-std=c++23', '-O2']);
+		assert.strictEqual(entries.get('verbose')?.value, true);
+		assert.strictEqual(entries.get('jobs')?.value, 4);
+		assert.strictEqual(entries.get('literal')?.value, 'no \\escapes');
 		assert.deepStrictEqual(warnings, []);
+	});
+
+	test('each key remembers the line it was written on', () => {
+		const { entries } = parseToml('# a comment\ncompiler = "g++"\n\nmode = "build"\n');
+		assert.strictEqual(entries.get('compiler')?.line, 1);
+		assert.strictEqual(entries.get('mode')?.line, 3);
 	});
 
 	test('ignores comments, blank lines and trailing commas', () => {
@@ -29,26 +35,27 @@ describe('parseToml', () => {
 				'\n'
 			)
 		);
-		assert.deepStrictEqual(entries.get('flags'), ['-Wall', '-Wextra']);
+		assert.deepStrictEqual(entries.get('flags')?.value, ['-Wall', '-Wextra']);
 	});
 
 	test('a section header is skipped with a warning', () => {
 		const { entries, warnings } = parseToml('[build]\ncompiler = "clang++"');
-		assert.strictEqual(entries.get('compiler'), 'clang++');
-		assert.strictEqual(warnings.length, 1);
+		assert.strictEqual(entries.get('compiler')?.value, 'clang++');
+		assert.deepStrictEqual(warnings.length, 1);
+		assert.strictEqual(warnings[0].line, 0);
 	});
 
 	test('a key with no value warns instead of throwing', () => {
 		const { entries, warnings } = parseToml('compiler =\nmode = "build"');
 		assert.strictEqual(entries.has('compiler'), false);
-		assert.strictEqual(entries.get('mode'), 'build');
-		assert.match(warnings[0], /no value/);
+		assert.strictEqual(entries.get('mode')?.value, 'build');
+		assert.match(warnings[0].message, /no value/);
 	});
 
 	test('an unterminated array does not hang', () => {
 		const { entries, warnings } = parseToml('flags = ["-Wall"');
-		assert.deepStrictEqual(entries.get('flags'), ['-Wall']);
-		assert.match(warnings[0], /unterminated array/);
+		assert.deepStrictEqual(entries.get('flags')?.value, ['-Wall']);
+		assert.match(warnings[0].message, /unterminated array/);
 	});
 });
 
@@ -78,25 +85,26 @@ describe('parseBuildSpec', () => {
 	test('unknown keys warn and are ignored', () => {
 		const { partial, warnings } = parseBuildSpec('compiler = "g++"\nlinker = "lld"');
 		assert.deepStrictEqual(partial, { compiler: 'g++' });
-		assert.match(warnings[0], /unknown buildspec key "linker"/);
+		assert.match(warnings[0].message, /unknown buildspec key "linker"/);
+		assert.strictEqual(warnings[0].line, 1);
 	});
 
 	test('a bad mode falls back to the default', () => {
 		const { partial, warnings } = parseBuildSpec('mode = "compile"');
 		assert.strictEqual(partial.mode, undefined);
-		assert.match(warnings[0], /"mode" must be "build" or "run"/);
+		assert.match(warnings[0].message, /"mode" must be "build" or "run"/);
 	});
 
 	test('flags given as a bare string are split and warned about', () => {
 		const { partial, warnings } = parseBuildSpec('flags = "-Wall -Wextra"');
 		assert.deepStrictEqual(partial.flags, ['-Wall', '-Wextra']);
-		assert.match(warnings[0], /should be an array/);
+		assert.match(warnings[0].message, /should be an array/);
 	});
 
 	test('an output path is rejected so the binary stays in the build dir', () => {
 		const { partial, warnings } = parseBuildSpec('output = "../escape"');
 		assert.strictEqual(partial.output, undefined);
-		assert.match(warnings[0], /plain file name/);
+		assert.match(warnings[0].message, /plain file name/);
 	});
 });
 

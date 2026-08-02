@@ -7,7 +7,7 @@ between runs.
 
 See [CLAUDE.md](CLAUDE.md) for the full design.
 
-## Status — phase 3
+## Status — phase 4
 
 - `.cnb` JSON notebook format (`NotebookSerializer`), metadata round-trips.
 - **Buildspec cells**: a `toml` cell opens a project and configures it. All four
@@ -34,10 +34,19 @@ See [CLAUDE.md](CLAUDE.md) for the full design.
   headers and **asset cells** — a cell of any language with an explicit filename,
   e.g. a `json` fixture — are written to the build dir but never compiled.
 - Cancellation kills the child process; temp dirs are always cleaned up.
+- **Named cells**: every file cell carries a status bar item with the name it
+  will be written under — auto-generated names are labelled `(auto)` so they are
+  never a surprise. Click it (or run **Compiler Notebook: Rename File Cell**) to
+  set the name; an empty answer goes back to auto. Buildspec cells show
+  `compiler · mode · N file(s)`, with the flags in the tooltip.
+- **Diagnostics** are real editor warnings on a `DiagnosticCollection`, keyed on
+  cell URIs and refreshed as you type — buildspec problems squiggle the offending
+  line. They are repeated in the build output so a run stays self-contained.
+- A `// @file x.cpp` directive is persisted into `metadata.filename` when the
+  project is run, and a rename keeps the directive line in step.
 
-Next up (phase 4): diagnostics move onto a `DiagnosticCollection`, filenames get
-a cell status bar item and a rename command, and a `// @file` directive syncs
-back into cell metadata. Today warnings are printed into the build output.
+Next up (phase 5): Rust and Zig, which should be table entries plus a per-language
+argument builder — `zig build-exe` does not take `-o`.
 
 ## Develop
 
@@ -79,4 +88,7 @@ code --install-extension compiler-notebook-0.0.1.vsix
 | `src/project.ts` | Pure project resolver + filename resolution. Unit-tested. |
 | `src/build.ts` | Temp-dir assembly, compile, run, cancellation. No `vscode` import. |
 | `src/serializer.ts` | `.cnb` ⇄ `NotebookData`. |
+| `src/notebook.ts` | `NotebookDocument` → resolver bridge, memoised per notebook version. |
 | `src/controller.ts` | The kernel: resolve → dedupe → build → stream output. |
+| `src/diagnostics.ts` | Soft problems as editor squiggles on a `DiagnosticCollection`. |
+| `src/filenames.ts` | Cell status bar items, the rename command, `@file` sync-back. |

@@ -15,14 +15,26 @@ import { BuildMode, BuildSpec, PartialBuildSpec } from './model';
 
 export type TomlValue = string | number | boolean | TomlValue[];
 
+/** A parsed key, with the line it was written on so warnings can point at it. */
+export interface TomlEntry {
+	readonly value: TomlValue;
+	readonly line: number;
+}
+
+/** A complaint about the buildspec, anchored to a zero-based line. */
+export interface SpecWarning {
+	readonly message: string;
+	readonly line: number;
+}
+
 export interface TomlParse {
-	readonly entries: ReadonlyMap<string, TomlValue>;
-	readonly warnings: readonly string[];
+	readonly entries: ReadonlyMap<string, TomlEntry>;
+	readonly warnings: readonly SpecWarning[];
 }
 
 export interface SpecParse {
 	readonly partial: PartialBuildSpec;
-	readonly warnings: readonly string[];
+	readonly warnings: readonly SpecWarning[];
 }
 
 const BARE_KEY = /[A-Za-z0-9_-]/;
@@ -34,6 +46,17 @@ class Scanner {
 
 	get done(): boolean {
 		return this.pos >= this.text.length;
+	}
+
+	/** Zero-based line of the cursor. Only called when a warning is raised. */
+	get line(): number {
+		let line = 0;
+		for (let i = 0; i < this.pos && i < this.text.length; i++) {
+			if (this.text[i] === '\n') {
+				line++;
+			}
+		}
+		return line;
 	}
 
 	peek(): string {
@@ -132,7 +155,7 @@ function readString(scanner: Scanner, quote: string): string {
 	return out;
 }
 
-function readValue(scanner: Scanner, warnings: string[]): TomlValue | undefined {
+function readValue(scanner: Scanner, warnings: SpecWarning[]): TomlValue | undefined {
 	scanner.skipInlineTrivia();
 	const ch = scanner.peek();
 
@@ -147,7 +170,7 @@ function readValue(scanner: Scanner, warnings: string[]): TomlValue | undefined 
 		for (;;) {
 			scanner.skipTrivia();
 			if (scanner.done) {
-				warnings.push('unterminated array in buildspec');
+				warnings.push({ message: 'unterminated array in buildspec', line: scanner.line });
 				return items;
 			}
 			if (scanner.peek() === ']') {
@@ -188,8 +211,8 @@ function readValue(scanner: Scanner, warnings: string[]): TomlValue | undefined 
 
 export function parseToml(text: string): TomlParse {
 	const scanner = new Scanner(text);
-	const entries = new Map<string, TomlValue>();
-	const warnings: string[] = [];
+	const entries = new Map<string, TomlEntry>();
+	const warnings: SpecWarning[] = [];
 
 	for (;;) {
 		scanner.skipTrivia();
@@ -197,8 +220,13 @@ export function parseToml(text: string): TomlParse {
 			break;
 		}
 
+		const line = scanner.line;
+
 		if (scanner.peek() === '[') {
-			warnings.push('TOML tables are not used by buildspecs; the section header was ignored');
+			warnings.push({
+				message: 'TOML tables are not used by buildspecs; the section header was ignored',
+				line
+			});
 			scanner.skipLine();
 			continue;
 		}
@@ -206,13 +234,14 @@ export function parseToml(text: string): TomlParse {
 		const key = scanner.readBareKey();
 		if (key.length === 0) {
 			// Not a key/value line at all — skip it rather than stall.
+			warnings.push({ message: 'this line is not a "key = value" pair; ignored', line });
 			scanner.skipLine();
 			continue;
 		}
 
 		scanner.skipInlineTrivia();
 		if (scanner.peek() !== '=') {
-			warnings.push(`expected "=" after key "${key}"`);
+			warnings.push({ message: `expected "=" after key "${key}"`, line });
 			scanner.skipLine();
 			continue;
 		}
@@ -220,13 +249,13 @@ export function parseToml(text: string): TomlParse {
 
 		const value = readValue(scanner, warnings);
 		if (value === undefined) {
-			warnings.push(`key "${key}" has no value`);
+			warnings.push({ message: `key "${key}" has no value`, line });
 			continue;
 		}
 		if (entries.has(key)) {
-			warnings.push(`duplicate key "${key}"; the last value wins`);
+			warnings.push({ message: `duplicate key "${key}"; the last value wins`, line });
 		}
-		entries.set(key, value);
+		entries.set(key, { value, line });
 	}
 
 	return { entries, warnings };
@@ -252,38 +281,44 @@ export function parseBuildSpec(text: string): SpecParse {
 		output?: string;
 	} = {};
 
-	for (const key of entries.keys()) {
+	for (const [key, entry] of entries) {
 		if (!KNOWN_KEYS.includes(key)) {
-			warnings.push(`unknown buildspec key "${key}" (ignored)`);
+			warnings.push({ message: `unknown buildspec key "${key}" (ignored)`, line: entry.line });
 		}
 	}
 
 	const compiler = entries.get('compiler');
 	if (compiler !== undefined) {
-		const name = asString(compiler)?.trim();
+		const name = asString(compiler.value)?.trim();
 		if (name && name.length > 0) {
 			partial.compiler = name;
 		} else {
-			warnings.push('"compiler" must be a string; using the language default');
+			warnings.push({
+				message: '"compiler" must be a string; using the language default',
+				line: compiler.line
+			});
 		}
 	}
 
 	const flags = entries.get('flags');
 	if (flags !== undefined) {
-		if (Array.isArray(flags)) {
+		if (Array.isArray(flags.value)) {
 			const items: string[] = [];
-			for (const flag of flags) {
+			for (const flag of flags.value) {
 				const text = asString(flag);
 				if (text === undefined) {
-					warnings.push('"flags" entries must be strings; a nested value was ignored');
+					warnings.push({
+						message: '"flags" entries must be strings; a nested value was ignored',
+						line: flags.line
+					});
 				} else {
 					items.push(text);
 				}
 			}
 			partial.flags = items;
 		} else {
-			const single = asString(flags);
-			warnings.push('"flags" should be an array of strings');
+			const single = asString(flags.value);
+			warnings.push({ message: '"flags" should be an array of strings', line: flags.line });
 			if (single !== undefined && single.length > 0) {
 				partial.flags = single.split(/\s+/);
 			}
@@ -292,22 +327,31 @@ export function parseBuildSpec(text: string): SpecParse {
 
 	const mode = entries.get('mode');
 	if (mode !== undefined) {
-		const text = asString(mode);
+		const text = asString(mode.value);
 		if (text === 'build' || text === 'run') {
 			partial.mode = text;
 		} else {
-			warnings.push(`"mode" must be "build" or "run" (got ${JSON.stringify(mode)}); using "run"`);
+			warnings.push({
+				message: `"mode" must be "build" or "run" (got ${JSON.stringify(mode.value)}); using "run"`,
+				line: mode.line
+			});
 		}
 	}
 
 	const output = entries.get('output');
 	if (output !== undefined) {
-		const name = asString(output)?.trim();
+		const name = asString(output.value)?.trim();
 		if (!name || name.length === 0) {
-			warnings.push('"output" must be a non-empty string; using the default');
+			warnings.push({
+				message: '"output" must be a non-empty string; using the default',
+				line: output.line
+			});
 		} else if (/[\\/]/.test(name) || name === '.' || name === '..') {
 			// The binary is written into the build dir; a path would escape it.
-			warnings.push(`"output" must be a plain file name (got "${name}"); using the default`);
+			warnings.push({
+				message: `"output" must be a plain file name (got "${name}"); using the default`,
+				line: output.line
+			});
 		} else {
 			partial.output = name;
 		}

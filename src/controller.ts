@@ -6,31 +6,12 @@
 import * as vscode from 'vscode';
 
 import { buildAndRun, OutputSink } from './build';
-import { CellLike, NOTEBOOK_TYPE, Project } from './model';
-import { resolveProjects } from './project';
+import { NotebookDiagnostics } from './diagnostics';
+import { syncFileDirectives } from './filenames';
+import { NOTEBOOK_TYPE, Project } from './model';
+import { CellAdapter, resolveNotebook } from './notebook';
 
 const CONTROLLER_ID = 'compiler-notebook-controller';
-
-/** Adapts a vscode notebook cell to the resolver's cell shape. */
-class CellAdapter implements CellLike {
-	constructor(readonly cell: vscode.NotebookCell) {}
-
-	get kind(): 'markup' | 'code' {
-		return this.cell.kind === vscode.NotebookCellKind.Markup ? 'markup' : 'code';
-	}
-
-	get languageId(): string {
-		return this.cell.document.languageId;
-	}
-
-	get value(): string {
-		return this.cell.document.getText();
-	}
-
-	get metadata(): Record<string, unknown> {
-		return this.cell.metadata ?? {};
-	}
-}
 
 /** Serialises appends so output chunks land in the order they were produced. */
 class ExecutionSink implements OutputSink {
@@ -68,7 +49,7 @@ export class CompilerNotebookController {
 	private readonly controller: vscode.NotebookController;
 	private executionOrder = 0;
 
-	constructor() {
+	constructor(private readonly diagnostics: NotebookDiagnostics) {
 		this.controller = vscode.notebooks.createNotebookController(
 			CONTROLLER_ID,
 			NOTEBOOK_TYPE,
@@ -88,30 +69,14 @@ export class CompilerNotebookController {
 		cells: vscode.NotebookCell[],
 		notebook: vscode.NotebookDocument
 	): Promise<void> {
-		const adapters = notebook.getCells().map((cell) => new CellAdapter(cell));
-		const { projects, diagnostics } = resolveProjects(adapters);
+		// Running is an explicit action, so it is a fair moment to persist any
+		// `// @file` directive into cell metadata (CLAUDE.md §4).
+		await syncFileDirectives(notebook);
 
-		// Diagnostics are reported on the cell they belong to, so they can be
-		// routed to the project that owns that cell.
-		const messagesFor = new Map<vscode.NotebookCell, string[]>();
-		for (const diagnostic of diagnostics) {
-			const cell = diagnostic.cell.cell;
-			const existing = messagesFor.get(cell);
-			if (existing) {
-				existing.push(diagnostic.message);
-			} else {
-				messagesFor.set(cell, [diagnostic.message]);
-			}
-		}
-
-		// Which project owns each executed cell.
-		const ownerOf = new Map<vscode.NotebookCell, Project<CellAdapter>>();
-		for (const project of projects) {
-			ownerOf.set(project.specCell.cell, project);
-			for (const file of project.files) {
-				ownerOf.set(file.cell.cell, project);
-			}
-		}
+		const { ownerOf, diagnosticsOf } = resolveNotebook(notebook);
+		// The squiggles are refreshed on a debounce; a run should not report
+		// anything the editor is not already showing.
+		this.diagnostics.refresh(notebook);
 
 		// De-duplicate: build each distinct project once, no matter how many of
 		// its cells were run.
@@ -132,14 +97,17 @@ export class CompilerNotebookController {
 		}
 
 		for (const cell of orphans) {
-			this.reportSkipped(cell, messagesFor.get(cell) ?? []);
+			this.reportSkipped(
+				cell,
+				(diagnosticsOf.get(cell) ?? []).map((problem) => problem.message)
+			);
 		}
 
 		for (const [project, requested] of pending) {
 			// Output always lands on the buildspec cell, whichever cell was run.
 			const primary = project.specCell.cell;
 			const secondary = requested.filter((cell) => cell !== primary);
-			await this.buildProject(project, primary, secondary, messagesFor);
+			await this.buildProject(project, primary, secondary, diagnosticsOf);
 		}
 	}
 
@@ -161,7 +129,7 @@ export class CompilerNotebookController {
 		project: Project<CellAdapter>,
 		primary: vscode.NotebookCell,
 		secondary: readonly vscode.NotebookCell[],
-		messagesFor: ReadonlyMap<vscode.NotebookCell, string[]>
+		diagnosticsOf: ReadonlyMap<vscode.NotebookCell, readonly { message: string }[]>
 	): Promise<void> {
 		const execution = this.controller.createNotebookCellExecution(primary);
 		execution.executionOrder = ++this.executionOrder;
@@ -171,12 +139,12 @@ export class CompilerNotebookController {
 		await execution.replaceOutput(output);
 		const sink = new ExecutionSink(execution, output);
 
-		// Phase 4 moves these onto a DiagnosticCollection; for now they are at
-		// least visible instead of silent.
+		// Also squiggled in the editor, but repeated here so the output is a
+		// complete record of what this build actually did.
 		const cells = [project.specCell.cell, ...project.files.map((file) => file.cell.cell)];
 		for (const cell of cells) {
-			for (const message of messagesFor.get(cell) ?? []) {
-				sink.stderr(`warning: ${message}\n`);
+			for (const problem of diagnosticsOf.get(cell) ?? []) {
+				sink.stderr(`warning: ${problem.message}\n`);
 			}
 		}
 

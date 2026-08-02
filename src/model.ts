@@ -58,6 +58,8 @@ export interface Project<T extends CellLike = CellLike> {
 export interface Diagnostic<T extends CellLike = CellLike> {
 	readonly cell: T;
 	readonly message: string;
+	/** Zero-based line within the cell. Defaults to the first line. */
+	readonly line?: number;
 }
 
 export interface ResolveResult<T extends CellLike = CellLike> {

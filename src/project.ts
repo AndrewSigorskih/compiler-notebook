@@ -27,7 +27,7 @@ export function filenameDirective(value: string): string | undefined {
 }
 
 /** The name a cell states outright, before sanitisation. */
-function statedFilename(cell: CellLike): string | undefined {
+export function statedFilename(cell: CellLike): string | undefined {
 	const explicit = cell.metadata?.['filename'];
 	if (typeof explicit === 'string' && explicit.trim().length > 0) {
 		return explicit.trim();
@@ -214,8 +214,8 @@ export function resolveProjects<T extends CellLike>(cells: readonly T[]): Resolv
 			case 'buildspec': {
 				close();
 				const { partial, warnings } = parseBuildSpec(cell.value);
-				for (const message of warnings) {
-					diagnostics.push({ cell, message });
+				for (const warning of warnings) {
+					diagnostics.push({ cell, message: warning.message, line: warning.line });
 				}
 				open = { specCell: cell, partial, cells: [] };
 				break;
