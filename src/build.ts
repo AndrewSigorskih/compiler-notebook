@@ -10,7 +10,7 @@ import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 
-import { isHeaderFilename } from './languages';
+import { isCompilableFilename } from './languages';
 import { CellLike, Project } from './model';
 
 export interface OutputSink {
@@ -118,17 +118,22 @@ async function buildAndRunIn<T extends CellLike>(
 	const { spec, files } = project;
 
 	for (const file of files) {
-		await fs.writeFile(path.join(dir, file.filename), file.cell.value, 'utf8');
+		// Filenames are sanitised to a relative path by the resolver, but a
+		// sub-directory still has to exist before the write.
+		const target = path.join(dir, ...file.filename.split('/'));
+		await fs.mkdir(path.dirname(target), { recursive: true });
+		await fs.writeFile(target, file.cell.value, 'utf8');
 	}
 	sink.info(`$ cd ${dir}\n`);
 
-	// Headers live in the dir for `#include`, but are not compile inputs.
-	const sources = files.map((f) => f.filename).filter((name) => !isHeaderFilename(name));
+	// Headers and data files live in the dir so `#include` and runtime reads
+	// work, but only translation units go on the command line.
+	const sources = files.map((f) => f.filename).filter(isCompilableFilename);
 	if (sources.length === 0) {
 		sink.stderr(
 			files.length === 0
 				? 'This project has no file cells; add a source cell below the buildspec.\n'
-				: 'No compilable source files in this project (headers only).\n'
+				: `None of this project's ${files.length} file(s) are compilable source files.\n`
 		);
 		return { success: false, compileExitCode: null, cancelled: false };
 	}

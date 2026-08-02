@@ -7,7 +7,7 @@ between runs.
 
 See [CLAUDE.md](CLAUDE.md) for the full design.
 
-## Status — phase 2
+## Status — phase 3
 
 - `.cnb` JSON notebook format (`NotebookSerializer`), metadata round-trips.
 - **Buildspec cells**: a `toml` cell opens a project and configures it. All four
@@ -27,12 +27,17 @@ See [CLAUDE.md](CLAUDE.md) for the full design.
 - Running *any* cell builds its owning project; distinct projects are built once
   each, and output always lands on the project's buildspec cell.
 - Filename resolution (`metadata.filename` → `// @file x.cpp` → auto-generated),
-  collision auto-suffixing (scoped per project), header cells excluded from
-  compile inputs.
+  collision auto-suffixing scoped per project.
+- **Multi-file build dirs**: sub-directories in a filename (`src/util.cpp`) are
+  created; names that would escape the build dir are reduced to their base name
+  and reported. Only translation units go on the compiler command line, so
+  headers and **asset cells** — a cell of any language with an explicit filename,
+  e.g. a `json` fixture — are written to the build dir but never compiled.
 - Cancellation kills the child process; temp dirs are always cleaned up.
 
-Next up (phase 4): diagnostics move onto a `DiagnosticCollection` and filenames
-get a cell status bar item. Today warnings are printed into the build output.
+Next up (phase 4): diagnostics move onto a `DiagnosticCollection`, filenames get
+a cell status bar item and a rename command, and a `// @file` directive syncs
+back into cell metadata. Today warnings are printed into the build output.
 
 ## Develop
 
@@ -42,11 +47,16 @@ Needs Node 20+ (`vsce` and the test runner both assume it); `.nvmrc` pins 22.
 nvm use             # honours .nvmrc
 npm install
 npm run compile     # or: npm run watch
-npm test            # unit tests for the pure resolver
+npm test            # resolver + buildspec unit tests, build tests via a stub compiler
 ```
 
-Press <kbd>F5</kbd> to launch the Extension Development Host, then open
-`examples/hello.cnb` and run the C++ cell.
+Press <kbd>F5</kbd> to launch the Extension Development Host, then open an
+example and run a cell:
+
+| Example | Shows |
+| --- | --- |
+| `examples/hello.cnb` | Two independent projects, prose inside a project, `mode = "build"`. |
+| `examples/assets.cnb` | Sub-directories in filenames, an asset cell read at runtime. |
 
 Packaging:
 

@@ -2,7 +2,13 @@ import * as assert from 'assert';
 import { test, describe } from 'node:test';
 
 import { CellLike } from '../model';
-import { autoFilename, classifyCell, filenameDirective, resolveProjects } from '../project';
+import {
+	autoFilename,
+	classifyCell,
+	filenameDirective,
+	resolveProjects,
+	sanitizeFilename
+} from '../project';
 
 function code(languageId: string, value: string, metadata?: Record<string, unknown>): CellLike {
 	return { kind: 'code', languageId, value, metadata };
@@ -28,6 +34,38 @@ describe('classifyCell', () => {
 
 	test('unknown languages are neither', () => {
 		assert.strictEqual(classifyCell(code('python', 'print(1)')), 'other');
+	});
+
+	test('a named cell of any language is an asset file cell', () => {
+		assert.strictEqual(classifyCell(code('json', '{}', { filename: 'data.json' })), 'file');
+		assert.strictEqual(classifyCell(code('plaintext', '# @file notes.txt\nhi')), 'file');
+	});
+});
+
+describe('sanitizeFilename', () => {
+	test('a plain name is left alone', () => {
+		assert.deepStrictEqual(sanitizeFilename('main.cpp'), { filename: 'main.cpp' });
+	});
+
+	test('sub-directories are allowed and normalised', () => {
+		assert.deepStrictEqual(sanitizeFilename('./src//util.cpp'), { filename: 'src/util.cpp' });
+		assert.deepStrictEqual(sanitizeFilename('src\\util.cpp'), { filename: 'src/util.cpp' });
+	});
+
+	test('a name that escapes the build dir is reduced to its base name', () => {
+		const result = sanitizeFilename('../../etc/passwd');
+		assert.strictEqual(result?.filename, 'passwd');
+		assert.match(result?.problem ?? '', /outside the build directory/);
+	});
+
+	test('an absolute path is reduced to its base name', () => {
+		assert.strictEqual(sanitizeFilename('/etc/passwd')?.filename, 'passwd');
+		assert.strictEqual(sanitizeFilename('C:\\windows\\evil.cpp')?.filename, 'evil.cpp');
+	});
+
+	test('a name with nothing usable in it is rejected', () => {
+		assert.strictEqual(sanitizeFilename('  '), undefined);
+		assert.strictEqual(sanitizeFilename('../..'), undefined);
 	});
 });
 
@@ -161,6 +199,29 @@ describe('resolveProjects', () => {
 			code('cpp', '// @file directive.cpp\nint main() {}', { filename: 'explicit.cpp' })
 		]);
 		assert.strictEqual(result.projects[0].files[0].filename, 'explicit.cpp');
+	});
+
+	test('an escaping filename is neutralised and reported on its cell', () => {
+		const evil = code('cpp', 'int main() {}', { filename: '../../escape.cpp' });
+		const result = resolveProjects([code('toml', ''), evil]);
+
+		assert.strictEqual(result.projects[0].files[0].filename, 'escape.cpp');
+		assert.strictEqual(result.diagnostics[0].cell, evil);
+		assert.match(result.diagnostics[0].message, /outside the build directory/);
+	});
+
+	test('an asset cell joins the project but does not decide its language', () => {
+		const result = resolveProjects([
+			code('toml', ''),
+			code('json', '{}', { filename: 'fixture.json' }),
+			code('cpp', 'int main() {}')
+		]);
+
+		assert.deepStrictEqual(
+			result.projects[0].files.map((f) => f.filename),
+			['fixture.json', 'main.cpp']
+		);
+		assert.strictEqual(result.projects[0].spec.compiler, 'g++');
 	});
 
 	test('colliding filenames are suffixed and reported', () => {

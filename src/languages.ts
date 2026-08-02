@@ -43,22 +43,24 @@ export function languageConfig(languageId: string): LanguageConfig | undefined {
 	return LANGUAGES[languageId];
 }
 
-/**
- * Headers are written into the build dir so `#include` finds them, but must not
- * be handed to the compiler as translation units.
- */
-const HEADER_EXTENSIONS: ReadonlySet<string> = new Set([
-	'.h',
-	'.hpp',
-	'.hh',
-	'.hxx',
-	'.h++',
-	'.inl',
-	'.ipp',
-	'.tpp'
-]);
+/** Extensions the compiler accepts as translation units. */
+const SOURCE_EXTENSIONS: ReadonlySet<string> = new Set(
+	Object.values(LANGUAGES).map((config) => config.sourceExtension)
+);
 
-export function isHeaderFilename(filename: string): boolean {
-	const dot = filename.lastIndexOf('.');
-	return dot > 0 && HEADER_EXTENSIONS.has(filename.slice(dot).toLowerCase());
+export function fileExtension(filename: string): string {
+	const base = filename.slice(filename.lastIndexOf('/') + 1);
+	const dot = base.lastIndexOf('.');
+	return dot > 0 ? base.slice(dot).toLowerCase() : '';
+}
+
+/**
+ * Which project files become compiler inputs.
+ *
+ * Selected by extension rather than by excluding headers: headers, data files
+ * and anything else still land in the build dir so `#include` and runtime file
+ * reads work, but only translation units are passed on the command line.
+ */
+export function isCompilableFilename(filename: string): boolean {
+	return SOURCE_EXTENSIONS.has(fileExtension(filename));
 }

@@ -7,7 +7,7 @@
  */
 
 import { parseBuildSpec, resolveSpec } from './buildspec';
-import { languageConfig, isHeaderFilename, isSourceLanguage } from './languages';
+import { fileExtension, languageConfig, isCompilableFilename, isSourceLanguage } from './languages';
 import {
 	BUILDSPEC_LANGUAGE_ID,
 	CellLike,
@@ -18,6 +18,23 @@ import {
 	ResolveResult
 } from './model';
 
+/** `// @file matrix.hpp` on the first line (CLAUDE.md §4). */
+const FILE_DIRECTIVE = /^\s*(?:\/\/|#|;)\s*@file\s+(\S+)\s*$/;
+
+export function filenameDirective(value: string): string | undefined {
+	const firstLine = value.split('\n', 1)[0] ?? '';
+	return FILE_DIRECTIVE.exec(firstLine)?.[1];
+}
+
+/** The name a cell states outright, before sanitisation. */
+function statedFilename(cell: CellLike): string | undefined {
+	const explicit = cell.metadata?.['filename'];
+	if (typeof explicit === 'string' && explicit.trim().length > 0) {
+		return explicit.trim();
+	}
+	return filenameDirective(cell.value);
+}
+
 export function classifyCell(cell: CellLike): CellRole {
 	if (cell.kind === 'markup') {
 		return 'markup';
@@ -25,15 +42,14 @@ export function classifyCell(cell: CellLike): CellRole {
 	if (cell.languageId === BUILDSPEC_LANGUAGE_ID) {
 		return 'buildspec';
 	}
-	return isSourceLanguage(cell.languageId) ? 'file' : 'other';
-}
-
-/** `// @file matrix.hpp` on the first line (CLAUDE.md §4). */
-const FILE_DIRECTIVE = /^\s*(?:\/\/|#|;)\s*@file\s+(\S+)\s*$/;
-
-export function filenameDirective(value: string): string | undefined {
-	const firstLine = value.split('\n', 1)[0] ?? '';
-	return FILE_DIRECTIVE.exec(firstLine)?.[1];
+	if (isSourceLanguage(cell.languageId)) {
+		return 'file';
+	}
+	// An asset cell: some other language, but named, so the user clearly wants it
+	// in the build dir (a data file, a linker script, a JSON fixture). It is
+	// written but never compiled — see `isCompilableFilename`. Naming it is what
+	// opts it in, because there is no sensible auto-name for an unknown language.
+	return statedFilename(cell) === undefined ? 'other' : 'file';
 }
 
 const HAS_MAIN = /\bint\s+main\s*\(/;
@@ -53,13 +69,70 @@ export function autoFilename(cell: CellLike, indexWithinProject: number): string
 	return `unit_${indexWithinProject}${sourceExt}`;
 }
 
-/** metadata.filename → `@file` directive → auto-generated. First hit wins. */
-export function resolveFilename(cell: CellLike, indexWithinProject: number): string {
-	const explicit = cell.metadata?.['filename'];
-	if (typeof explicit === 'string' && explicit.trim().length > 0) {
-		return explicit.trim();
+export interface ResolvedName {
+	readonly filename: string;
+	/** Set when the stated name had to be changed; reported as a diagnostic. */
+	readonly problem?: string;
+}
+
+/**
+ * Constrain a stated filename to a relative path inside the build dir.
+ *
+ * Sub-directories are allowed (`src/util.cpp`) because multi-file projects
+ * sometimes want them, but anything that would escape the build dir is refused:
+ * the build dir is the isolation boundary, and writing outside it would touch
+ * the user's real filesystem.
+ */
+export function sanitizeFilename(raw: string): ResolvedName | undefined {
+	const normalized = raw.trim().replace(/\\/g, '/');
+	const absolute = normalized.startsWith('/') || /^[A-Za-z]:/.test(normalized);
+	const segments: string[] = [];
+	let escaped = false;
+
+	for (const segment of normalized.split('/')) {
+		const trimmed = segment.trim();
+		if (trimmed === '' || trimmed === '.') {
+			continue;
+		}
+		if (trimmed === '..') {
+			escaped = true;
+			continue;
+		}
+		segments.push(trimmed);
 	}
-	return filenameDirective(cell.value) ?? autoFilename(cell, indexWithinProject);
+
+	if (segments.length === 0) {
+		return undefined;
+	}
+
+	if (absolute || escaped) {
+		// Keep only the base name: the intent (this file, this name) survives,
+		// the escape does not.
+		const filename = segments[segments.length - 1];
+		return {
+			filename,
+			problem: `Filename "${raw.trim()}" would write outside the build directory; using "${filename}" instead.`
+		};
+	}
+
+	return { filename: segments.join('/') };
+}
+
+/** metadata.filename → `@file` directive → auto-generated. First hit wins. */
+export function resolveFilename(cell: CellLike, indexWithinProject: number): ResolvedName {
+	const stated = statedFilename(cell);
+	if (stated !== undefined) {
+		const sanitized = sanitizeFilename(stated);
+		if (sanitized) {
+			return sanitized;
+		}
+		const filename = autoFilename(cell, indexWithinProject);
+		return {
+			filename,
+			problem: `Filename "${stated}" is not usable as a file name; using "${filename}" instead.`
+		};
+	}
+	return { filename: autoFilename(cell, indexWithinProject) };
 }
 
 /**
@@ -74,12 +147,17 @@ function assignFilenames<T extends CellLike>(
 	const files: ProjectFile<T>[] = [];
 
 	cells.forEach((cell, index) => {
-		const wanted = resolveFilename(cell, index);
+		const { filename: wanted, problem } = resolveFilename(cell, index);
+		if (problem) {
+			diagnostics.push({ cell, message: problem });
+		}
 		let filename = wanted;
 		if (taken.has(filename)) {
-			const dot = wanted.lastIndexOf('.');
-			const stem = dot > 0 ? wanted.slice(0, dot) : wanted;
-			const ext = dot > 0 ? wanted.slice(dot) : '';
+			// Suffix the base name, not the path: `src/main.cpp` → `src/main_2.cpp`.
+			// Sliced by length so the original spelling of the extension survives.
+			const extLength = fileExtension(wanted).length;
+			const stem = extLength > 0 ? wanted.slice(0, -extLength) : wanted;
+			const ext = extLength > 0 ? wanted.slice(-extLength) : '';
 			let n = 2;
 			while (taken.has(`${stem}_${n}${ext}`)) {
 				n++;
@@ -98,11 +176,12 @@ function assignFilenames<T extends CellLike>(
 }
 
 /**
- * The language a project compiles: the first source cell that is not a header,
- * falling back to the first cell of any kind. Drives the compiler/flag defaults.
+ * The language a project compiles: the first file that is actually a compiler
+ * input, falling back to the first file of any kind. Drives compiler/flag
+ * defaults, so headers and data files must not get a vote.
  */
 function projectLanguage<T extends CellLike>(files: readonly ProjectFile<T>[]): string | undefined {
-	const compiled = files.find((file) => !isHeaderFilename(file.filename));
+	const compiled = files.find((file) => isCompilableFilename(file.filename));
 	return (compiled ?? files[0])?.cell.languageId;
 }
 
