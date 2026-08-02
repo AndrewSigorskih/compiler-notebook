@@ -22,7 +22,10 @@ projects — that's phase 2.
 
 ## Develop
 
+Needs Node 20+ (`vsce` and the test runner both assume it); `.nvmrc` pins 22.
+
 ```sh
+nvm use             # honours .nvmrc
 npm install
 npm run compile     # or: npm run watch
 npm test            # unit tests for the pure resolver
@@ -41,31 +44,6 @@ code --install-extension compiler-notebook-0.0.1.vsix
 > Installing over an already-open `.cnb` tab is not enough: a reloaded window
 > restores that tab in whatever editor it was using. Close the tab and reopen the
 > file, or use **Open With… → Compiler Notebook**.
-
-## Known workarounds (remove when possible)
-
-### Node 18 `File` polyfill for `vsce`
-
-**What:** `npm run package` preloads `scripts/node18-file-polyfill.js` and pins
-`@vscode/vsce@2.32.0`.
-
-**Why:** the dev machine runs Node 18.19.1. `vsce` (any version — it resolves a
-recent `undici` transitively) touches the global `File`/`Blob` that Node only
-added in v20, and dies at require time with:
-
-```
-ReferenceError: File is not defined
-    at .../undici/lib/web/webidl/index.js:537
-```
-
-The polyfill copies `File`/`Blob` off `node:buffer` (present since 18.13) onto
-`globalThis` before `vsce` loads. The version pin is *not* what fixes it and is
-only there to keep the toolchain stable.
-
-**Remove when:** the project moves to Node 20+. Then delete
-`scripts/node18-file-polyfill.js`, drop the `NODE_OPTIONS` prefix and the
-`@2.32.0` pin from the `package` script (`npx --yes @vscode/vsce package
---skip-license`), and drop `scripts/**` from `.vscodeignore`.
 
 ## Layout
 
