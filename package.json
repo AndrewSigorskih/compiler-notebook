@@ -39,7 +39,7 @@
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
     "package": "npx --yes @vscode/vsce package --skip-license",
-    "test": "node --test \"out/test/**/*.test.js\"",
+    "test": "node --test out/test/",
     "pretest": "npm run compile"
   },
   "devDependencies": {

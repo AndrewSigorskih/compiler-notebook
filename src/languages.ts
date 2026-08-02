@@ -11,11 +11,23 @@ export interface LanguageConfig {
 	readonly headerExtension?: string;
 	/** Compiler assumed when a buildspec does not name one. */
 	readonly defaultCompiler: string;
+	/** Flags assumed when a buildspec does not list any. */
+	readonly defaultFlags?: readonly string[];
 }
 
 export const LANGUAGES: Readonly<Record<string, LanguageConfig>> = {
-	cpp: { sourceExtension: '.cpp', headerExtension: '.hpp', defaultCompiler: 'g++' },
-	c: { sourceExtension: '.c', headerExtension: '.h', defaultCompiler: 'gcc' },
+	cpp: {
+		sourceExtension: '.cpp',
+		headerExtension: '.hpp',
+		defaultCompiler: 'g++',
+		defaultFlags: ['-std=c++20', '-O2', '-Wall', '-Wextra']
+	},
+	c: {
+		sourceExtension: '.c',
+		headerExtension: '.h',
+		defaultCompiler: 'gcc',
+		defaultFlags: ['-std=c17', '-O2', '-Wall', '-Wextra']
+	},
 	rust: { sourceExtension: '.rs', defaultCompiler: 'rustc' },
 	zig: { sourceExtension: '.zig', defaultCompiler: 'zig' }
 };

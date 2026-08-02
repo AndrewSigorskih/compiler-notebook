@@ -22,16 +22,13 @@ export interface BuildSpec {
 	readonly output: string;
 }
 
-/**
- * Phase 1 hardcodes this. Phase 2 replaces it with a parsed TOML buildspec
- * cell, falling back to these values for missing keys.
- */
-export const DEFAULT_SPEC: BuildSpec = {
-	compiler: 'g++',
-	flags: ['-std=c++20', '-O2', '-Wall', '-Wextra'],
-	mode: 'run',
-	output: 'app'
-};
+/** What a buildspec cell actually stated; everything else is defaulted. */
+export interface PartialBuildSpec {
+	readonly compiler?: string;
+	readonly flags?: readonly string[];
+	readonly mode?: BuildMode;
+	readonly output?: string;
+}
 
 /** Minimal shape of a notebook cell the resolver needs. */
 export interface CellLike {
@@ -49,8 +46,11 @@ export interface ProjectFile<T extends CellLike = CellLike> {
 
 export interface Project<T extends CellLike = CellLike> {
 	readonly spec: BuildSpec;
-	/** Cell that owns the execution output. Undefined until phase 2. */
-	readonly specCell?: T;
+	/**
+	 * The buildspec cell that opened this project. It owns the execution output
+	 * no matter which of the project's cells was run (CLAUDE.md §5).
+	 */
+	readonly specCell: T;
 	readonly files: readonly ProjectFile<T>[];
 }
 

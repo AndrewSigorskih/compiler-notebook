@@ -7,18 +7,32 @@ between runs.
 
 See [CLAUDE.md](CLAUDE.md) for the full design.
 
-## Status — phase 1
+## Status — phase 2
 
 - `.cnb` JSON notebook format (`NotebookSerializer`), metadata round-trips.
-- A `NotebookController` that treats the whole notebook as one project, builds
-  every `cpp` cell with a hardcoded `g++`, and streams compiler and program
-  output into the cell.
+- **Buildspec cells**: a `toml` cell opens a project and configures it. All four
+  keys are optional; unknown keys and bad values warn instead of failing.
+
+  ```toml
+  compiler = "g++"              # default: from the project's language
+  flags    = ["-std=c++23", "-O2"]
+  mode     = "run"              # "build" | "run"
+  output   = "app"
+  ```
+
+- **Positional project resolution**: a project is one buildspec cell plus the
+  file cells below it, up to the next buildspec cell. Markdown cells in between
+  do not break a project. File cells above the first buildspec get a soft
+  diagnostic and are not built.
+- Running *any* cell builds its owning project; distinct projects are built once
+  each, and output always lands on the project's buildspec cell.
 - Filename resolution (`metadata.filename` → `// @file x.cpp` → auto-generated),
-  collision auto-suffixing, header cells excluded from compile inputs.
+  collision auto-suffixing (scoped per project), header cells excluded from
+  compile inputs.
 - Cancellation kills the child process; temp dirs are always cleaned up.
 
-Buildspec (`toml`) cells are recognised by the resolver but do not yet open
-projects — that's phase 2.
+Next up (phase 4): diagnostics move onto a `DiagnosticCollection` and filenames
+get a cell status bar item. Today warnings are printed into the build output.
 
 ## Develop
 
@@ -51,6 +65,7 @@ code --install-extension compiler-notebook-0.0.1.vsix
 | --- | --- |
 | `src/model.ts` | Types, defaults, notebook/language constants. No `vscode` import. |
 | `src/languages.ts` | The single per-language config table. |
+| `src/buildspec.ts` | Tolerant TOML subset parser + spec defaulting. No `vscode` import. |
 | `src/project.ts` | Pure project resolver + filename resolution. Unit-tested. |
 | `src/build.ts` | Temp-dir assembly, compile, run, cancellation. No `vscode` import. |
 | `src/serializer.ts` | `.cnb` ⇄ `NotebookData`. |

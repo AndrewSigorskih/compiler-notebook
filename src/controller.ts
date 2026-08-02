@@ -91,14 +91,25 @@ export class CompilerNotebookController {
 		const adapters = notebook.getCells().map((cell) => new CellAdapter(cell));
 		const { projects, diagnostics } = resolveProjects(adapters);
 
+		// Diagnostics are reported on the cell they belong to, so they can be
+		// routed to the project that owns that cell.
+		const messagesFor = new Map<vscode.NotebookCell, string[]>();
+		for (const diagnostic of diagnostics) {
+			const cell = diagnostic.cell.cell;
+			const existing = messagesFor.get(cell);
+			if (existing) {
+				existing.push(diagnostic.message);
+			} else {
+				messagesFor.set(cell, [diagnostic.message]);
+			}
+		}
+
 		// Which project owns each executed cell.
 		const ownerOf = new Map<vscode.NotebookCell, Project<CellAdapter>>();
 		for (const project of projects) {
+			ownerOf.set(project.specCell.cell, project);
 			for (const file of project.files) {
 				ownerOf.set(file.cell.cell, project);
-			}
-			if (project.specCell) {
-				ownerOf.set(project.specCell.cell, project);
 			}
 		}
 
@@ -121,37 +132,36 @@ export class CompilerNotebookController {
 		}
 
 		for (const cell of orphans) {
-			this.reportSkipped(cell);
+			this.reportSkipped(cell, messagesFor.get(cell) ?? []);
 		}
 
 		for (const [project, requested] of pending) {
-			// PHASE 1: no buildspec cell exists yet, so output goes to the first
-			// requested cell. Phase 2 switches this to `project.specCell`.
-			const primary = project.specCell?.cell ?? requested[0];
+			// Output always lands on the buildspec cell, whichever cell was run.
+			const primary = project.specCell.cell;
 			const secondary = requested.filter((cell) => cell !== primary);
-			await this.buildProject(project, primary, secondary, diagnostics);
+			await this.buildProject(project, primary, secondary, messagesFor);
 		}
 	}
 
-	private reportSkipped(cell: vscode.NotebookCell): void {
+	private reportSkipped(cell: vscode.NotebookCell, messages: readonly string[]): void {
 		const execution = this.controller.createNotebookCellExecution(cell);
 		execution.executionOrder = ++this.executionOrder;
 		execution.start(Date.now());
+		const text =
+			messages.length > 0
+				? messages.map((message) => `${message}\n`).join('')
+				: 'This cell is not part of any project — nothing to build.\n';
 		void execution.replaceOutput(
-			new vscode.NotebookCellOutput([
-				vscode.NotebookCellOutputItem.stdout(
-					'This cell is not part of any project — nothing to build.\n'
-				)
-			])
+			new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.stderr(text)])
 		);
-		execution.end(true, Date.now());
+		execution.end(false, Date.now());
 	}
 
 	private async buildProject(
 		project: Project<CellAdapter>,
 		primary: vscode.NotebookCell,
 		secondary: readonly vscode.NotebookCell[],
-		diagnostics: readonly { cell: CellAdapter; message: string }[]
+		messagesFor: ReadonlyMap<vscode.NotebookCell, string[]>
 	): Promise<void> {
 		const execution = this.controller.createNotebookCellExecution(primary);
 		execution.executionOrder = ++this.executionOrder;
@@ -163,15 +173,18 @@ export class CompilerNotebookController {
 
 		// Phase 4 moves these onto a DiagnosticCollection; for now they are at
 		// least visible instead of silent.
-		for (const diagnostic of diagnostics) {
-			sink.stderr(`warning: ${diagnostic.message}\n`);
+		const cells = [project.specCell.cell, ...project.files.map((file) => file.cell.cell)];
+		for (const cell of cells) {
+			for (const message of messagesFor.get(cell) ?? []) {
+				sink.stderr(`warning: ${message}\n`);
+			}
 		}
 
-		sink.info(
-			`Project: ${project.files.length} file(s) — ${project.files
-				.map((f) => f.filename)
-				.join(', ')}\n`
-		);
+		const summary =
+			project.files.length === 0
+				? 'no file cells'
+				: project.files.map((f) => f.filename).join(', ');
+		sink.info(`Project: ${project.spec.compiler} — ${summary}\n`);
 
 		let success = false;
 		try {

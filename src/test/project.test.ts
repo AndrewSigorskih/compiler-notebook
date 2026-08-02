@@ -55,21 +55,25 @@ describe('autoFilename', () => {
 	});
 });
 
-describe('resolveProjects (phase 1: whole notebook is one project)', () => {
-	test('no source cells means nothing to build', () => {
-		const result = resolveProjects([markup('# hi'), code('toml', 'compiler = "g++"')]);
+describe('resolveProjects', () => {
+	test('an empty notebook has no projects', () => {
+		const result = resolveProjects([markup('# hi')]);
 		assert.strictEqual(result.projects.length, 0);
+		assert.strictEqual(result.diagnostics.length, 0);
 	});
 
-	test('collects source cells and ignores markup and buildspecs', () => {
+	test('a buildspec cell opens a project and following file cells join it', () => {
+		const spec = code('toml', 'compiler = "clang++"');
 		const result = resolveProjects([
 			markup('# demo'),
-			code('toml', 'compiler = "g++"'),
+			spec,
 			code('cpp', '#pragma once\nvoid f();', { filename: 'f.hpp' }),
 			code('cpp', 'int main() { return 0; }')
 		]);
 
 		assert.strictEqual(result.projects.length, 1);
+		assert.strictEqual(result.projects[0].specCell, spec);
+		assert.strictEqual(result.projects[0].spec.compiler, 'clang++');
 		assert.deepStrictEqual(
 			result.projects[0].files.map((f) => f.filename),
 			['f.hpp', 'main.cpp']
@@ -77,8 +81,83 @@ describe('resolveProjects (phase 1: whole notebook is one project)', () => {
 		assert.strictEqual(result.diagnostics.length, 0);
 	});
 
+	test('markup cells do not close a project', () => {
+		const result = resolveProjects([
+			code('toml', ''),
+			code('cpp', 'void f() {}'),
+			markup('narration in the middle'),
+			code('cpp', 'int main() { f(); }')
+		]);
+
+		assert.strictEqual(result.projects.length, 1);
+		assert.strictEqual(result.projects[0].files.length, 2);
+	});
+
+	test('a second buildspec cell starts a second project', () => {
+		const first = code('toml', 'mode = "build"');
+		const second = code('toml', 'output = "second"');
+		const result = resolveProjects([
+			first,
+			code('cpp', 'int main() {}'),
+			second,
+			code('cpp', 'int main() {}')
+		]);
+
+		assert.strictEqual(result.projects.length, 2);
+		assert.strictEqual(result.projects[0].specCell, first);
+		assert.strictEqual(result.projects[0].spec.mode, 'build');
+		assert.strictEqual(result.projects[1].specCell, second);
+		assert.strictEqual(result.projects[1].spec.output, 'second');
+		// Filenames are scoped to a project, so both may be main.cpp.
+		assert.strictEqual(result.projects[0].files[0].filename, 'main.cpp');
+		assert.strictEqual(result.projects[1].files[0].filename, 'main.cpp');
+		assert.strictEqual(result.diagnostics.length, 0);
+	});
+
+	test('a buildspec with no file cells is still a project', () => {
+		const result = resolveProjects([code('toml', 'compiler = "g++"')]);
+		assert.strictEqual(result.projects.length, 1);
+		assert.strictEqual(result.projects[0].files.length, 0);
+	});
+
+	test('file cells before the first buildspec are a soft diagnostic', () => {
+		const orphan = code('cpp', 'int main() {}');
+		const result = resolveProjects([orphan, code('toml', ''), code('cpp', 'int main() {}')]);
+
+		assert.strictEqual(result.projects.length, 1);
+		assert.strictEqual(result.projects[0].files.length, 1);
+		assert.strictEqual(result.diagnostics.length, 1);
+		assert.strictEqual(result.diagnostics[0].cell, orphan);
+		assert.match(result.diagnostics[0].message, /no buildspec cell above it/);
+	});
+
+	test('compiler and flags default from the language of the source cells', () => {
+		const result = resolveProjects([code('toml', ''), code('c', 'int main() { return 0; }')]);
+		assert.strictEqual(result.projects[0].spec.compiler, 'gcc');
+		assert.deepStrictEqual(result.projects[0].spec.flags, ['-std=c17', '-O2', '-Wall', '-Wextra']);
+	});
+
+	test('a header-only cell does not decide the project language', () => {
+		const result = resolveProjects([
+			code('toml', ''),
+			code('c', '#pragma once\nvoid f();'),
+			code('cpp', 'int main() {}')
+		]);
+		assert.strictEqual(result.projects[0].spec.compiler, 'g++');
+	});
+
+	test('buildspec parse warnings become diagnostics on the buildspec cell', () => {
+		const spec = code('toml', 'compiler = "g++"\nnonsense = 1\n');
+		const result = resolveProjects([spec, code('cpp', 'int main() {}')]);
+
+		assert.strictEqual(result.diagnostics.length, 1);
+		assert.strictEqual(result.diagnostics[0].cell, spec);
+		assert.match(result.diagnostics[0].message, /unknown buildspec key "nonsense"/);
+	});
+
 	test('explicit metadata beats the @file directive', () => {
 		const result = resolveProjects([
+			code('toml', ''),
 			code('cpp', '// @file directive.cpp\nint main() {}', { filename: 'explicit.cpp' })
 		]);
 		assert.strictEqual(result.projects[0].files[0].filename, 'explicit.cpp');
@@ -86,6 +165,7 @@ describe('resolveProjects (phase 1: whole notebook is one project)', () => {
 
 	test('colliding filenames are suffixed and reported', () => {
 		const result = resolveProjects([
+			code('toml', ''),
 			code('cpp', 'int main() { return 0; }'),
 			code('cpp', 'int main() { return 1; }')
 		]);

@@ -125,7 +125,11 @@ async function buildAndRunIn<T extends CellLike>(
 	// Headers live in the dir for `#include`, but are not compile inputs.
 	const sources = files.map((f) => f.filename).filter((name) => !isHeaderFilename(name));
 	if (sources.length === 0) {
-		sink.stderr('No compilable source files in this project (headers only).\n');
+		sink.stderr(
+			files.length === 0
+				? 'This project has no file cells; add a source cell below the buildspec.\n'
+				: 'No compilable source files in this project (headers only).\n'
+		);
 		return { success: false, compileExitCode: null, cancelled: false };
 	}
 

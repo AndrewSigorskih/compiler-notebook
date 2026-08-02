@@ -4,21 +4,50 @@
     {
       "kind": "markup",
       "language": "markdown",
-      "value": "# Hello, Compiler Notebook\n\nPhase 1: the whole notebook is one project, built with a hardcoded `g++`.\nPress the Run button on the C++ cell below."
+      "value": "# Hello, Compiler Notebook\n\nA **buildspec cell** (the `toml` cell below) opens a project and configures it.\nEvery source cell under it belongs to that project, until the next buildspec\ncell. Running any cell of a project builds the whole project, and the output\nlands on the buildspec cell."
+    },
+    {
+      "kind": "code",
+      "language": "toml",
+      "value": "compiler = \"g++\"\nflags    = [\"-std=c++20\", \"-O2\", \"-Wall\", \"-Wextra\"]\nmode     = \"run\"\noutput   = \"hello\"\n"
     },
     {
       "kind": "code",
       "language": "cpp",
-      "value": "#pragma once\n\n#include <string>\n\ninline std::string greeting() {\n    return \"hello from a compiler notebook\";\n}\n",
+      "value": "#pragma once\n\n#include <string>\n\ninline std::string greeting() {\n    return \"hello from a compiler notebook v0.0.1\";\n}\n",
       "metadata": {
         "role": "file",
         "filename": "greeting.hpp"
       }
     },
     {
+      "kind": "markup",
+      "language": "markdown",
+      "value": "Prose in the middle of a project is fine — Markdown cells never end a project."
+    },
+    {
       "kind": "code",
       "language": "cpp",
       "value": "#include <iostream>\n\n#include \"greeting.hpp\"\n\nint main() {\n    std::cout << greeting() << '\\n';\n    return 0;\n}\n",
+      "metadata": {
+        "role": "file",
+        "filename": "main.cpp"
+      }
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "value": "## A second, independent project\n\nThe buildspec cell below starts a new project. It builds in its own temp dir\nwith its own flags, and its `main.cpp` does not collide with the one above."
+    },
+    {
+      "kind": "code",
+      "language": "toml",
+      "value": "# Every key is optional: compiler and flags default from the cell language.\nmode = \"build\"\n"
+    },
+    {
+      "kind": "code",
+      "language": "cpp",
+      "value": "#include <vector>\n#include <numeric>\n\nint main() {\n    std::vector<int> v(10);\n    std::iota(v.begin(), v.end(), 1);\n    return std::accumulate(v.begin(), v.end(), 0) == 55 ? 0 : 1;\n}\n",
       "metadata": {
         "role": "file",
         "filename": "main.cpp"

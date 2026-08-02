@@ -1,19 +1,19 @@
 /**
  * Project resolution — a pure function over a cell list (CLAUDE.md §5, §10).
  *
- * PHASE 1: the whole notebook is a single project built with DEFAULT_SPEC.
- * Buildspec cells are recognised but do not yet open projects; phase 2 replaces
- * the body of `resolveProjects` with the positional model without changing this
- * module's signatures.
+ * Positional model: a buildspec cell opens a project, following file cells join
+ * it, markup cells do not close it, and the next buildspec cell starts the next
+ * project.
  */
 
-import { languageConfig, isSourceLanguage } from './languages';
+import { parseBuildSpec, resolveSpec } from './buildspec';
+import { languageConfig, isHeaderFilename, isSourceLanguage } from './languages';
 import {
 	BUILDSPEC_LANGUAGE_ID,
 	CellLike,
 	CellRole,
-	DEFAULT_SPEC,
 	Diagnostic,
+	Project,
 	ProjectFile,
 	ResolveResult
 } from './model';
@@ -97,17 +97,67 @@ function assignFilenames<T extends CellLike>(
 	return files;
 }
 
+/**
+ * The language a project compiles: the first source cell that is not a header,
+ * falling back to the first cell of any kind. Drives the compiler/flag defaults.
+ */
+function projectLanguage<T extends CellLike>(files: readonly ProjectFile<T>[]): string | undefined {
+	const compiled = files.find((file) => !isHeaderFilename(file.filename));
+	return (compiled ?? files[0])?.cell.languageId;
+}
+
+interface OpenProject<T extends CellLike> {
+	readonly specCell: T;
+	readonly partial: ReturnType<typeof parseBuildSpec>['partial'];
+	readonly cells: T[];
+}
+
 export function resolveProjects<T extends CellLike>(cells: readonly T[]): ResolveResult<T> {
 	const diagnostics: Diagnostic<T>[] = [];
-	const fileCells = cells.filter((cell) => classifyCell(cell) === 'file');
+	const projects: Project<T>[] = [];
+	let open: OpenProject<T> | undefined;
 
-	if (fileCells.length === 0) {
-		return { projects: [], diagnostics };
+	const close = (): void => {
+		if (!open) {
+			return;
+		}
+		const files = assignFilenames(open.cells, diagnostics);
+		projects.push({
+			spec: resolveSpec(open.partial, projectLanguage(files)),
+			specCell: open.specCell,
+			files
+		});
+		open = undefined;
+	};
+
+	for (const cell of cells) {
+		switch (classifyCell(cell)) {
+			case 'buildspec': {
+				close();
+				const { partial, warnings } = parseBuildSpec(cell.value);
+				for (const message of warnings) {
+					diagnostics.push({ cell, message });
+				}
+				open = { specCell: cell, partial, cells: [] };
+				break;
+			}
+			case 'file':
+				if (open) {
+					open.cells.push(cell);
+				} else {
+					diagnostics.push({
+						cell,
+						message:
+							'This file cell has no buildspec cell above it, so it belongs to no project and will not be built.'
+					});
+				}
+				break;
+			default:
+				// Markup and unrelated code cells never open or close a project.
+				break;
+		}
 	}
 
-	const files = assignFilenames(fileCells, diagnostics);
-	return {
-		projects: [{ spec: DEFAULT_SPEC, files }],
-		diagnostics
-	};
+	close();
+	return { projects, diagnostics };
 }
