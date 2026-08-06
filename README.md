@@ -33,6 +33,10 @@ See [CLAUDE.md](CLAUDE.md) for the full design.
   and reported. Only translation units go on the compiler command line, so
   headers and **asset cells** — a cell of any language with an explicit filename,
   e.g. a `json` fixture — are written to the build dir but never compiled.
+- Compiler diagnostics and program output stream into the cell as they arrive,
+  with `stderr` rendered as `stderr`. Floods are capped at 2000 lines / 512 KB,
+  keeping the **head** — the first error is the one that caused the rest — and
+  the command lines and exit code are never cut.
 - Cancellation kills the child process; temp dirs are always cleaned up.
 - **Named cells**: every file cell carries a status bar item with the name it
   will be written under — auto-generated names are labelled `(auto)` so they are
@@ -87,6 +91,7 @@ code --install-extension compiler-notebook-0.0.1.vsix
 | `src/buildspec.ts` | Tolerant TOML subset parser + spec defaulting. No `vscode` import. |
 | `src/project.ts` | Pure project resolver + filename resolution. Unit-tested. |
 | `src/build.ts` | Temp-dir assembly, compile, run, cancellation. No `vscode` import. |
+| `src/output.ts` | Output limiting. No `vscode` import. |
 | `src/serializer.ts` | `.cnb` ⇄ `NotebookData`. |
 | `src/notebook.ts` | `NotebookDocument` → resolver bridge, memoised per notebook version. |
 | `src/controller.ts` | The kernel: resolve → dedupe → build → stream output. |

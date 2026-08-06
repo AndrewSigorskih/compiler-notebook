@@ -5,44 +5,63 @@
 
 import * as vscode from 'vscode';
 
-import { buildAndRun, OutputSink } from './build';
+import { buildAndRun } from './build';
 import { NotebookDiagnostics } from './diagnostics';
 import { syncFileDirectives } from './filenames';
 import { NOTEBOOK_TYPE, Project } from './model';
 import { CellAdapter, resolveNotebook } from './notebook';
+import { StreamKind, StreamTarget, TruncatingSink } from './output';
 
 const CONTROLLER_ID = 'compiler-notebook-controller';
 
-/** Serialises appends so output chunks land in the order they were produced. */
-class ExecutionSink implements OutputSink {
+/**
+ * Streams text into cell outputs, serialising the appends so chunks land in the
+ * order they were produced.
+ *
+ * One `NotebookCellOutput` holds *alternative representations* of a single
+ * output, so putting a stdout item and a stderr item in the same one makes the
+ * renderer choose between them — and silently drop the compiler's diagnostics.
+ * Each switch between the two streams therefore starts a new output, and each
+ * output only ever holds one item, whose text is replaced as it grows.
+ */
+class CellOutputTarget implements StreamTarget {
 	private queue: Promise<unknown> = Promise.resolve();
+	private current: { kind: StreamKind; output: vscode.NotebookCellOutput; text: string } | undefined;
 
-	constructor(
-		private readonly execution: vscode.NotebookCellExecution,
-		private readonly output: vscode.NotebookCellOutput
-	) {}
+	constructor(private readonly execution: vscode.NotebookCellExecution) {}
 
-	private append(item: vscode.NotebookCellOutputItem): void {
-		this.queue = this.queue
-			.then(() => this.execution.appendOutputItems(item, this.output))
-			.then(undefined, () => undefined);
+	write(kind: StreamKind, text: string): void {
+		if (text.length === 0) {
+			return;
+		}
+
+		if (this.current?.kind === kind) {
+			const run = this.current;
+			run.text += text;
+			const item = itemFor(kind, run.text);
+			this.enqueue(() => this.execution.replaceOutputItems(item, run.output));
+			return;
+		}
+
+		const output = new vscode.NotebookCellOutput([itemFor(kind, text)]);
+		this.current = { kind, output, text };
+		this.enqueue(() => this.execution.appendOutput(output));
 	}
 
-	info(text: string): void {
-		this.append(vscode.NotebookCellOutputItem.stdout(text));
-	}
-
-	stdout(chunk: string): void {
-		this.append(vscode.NotebookCellOutputItem.stdout(chunk));
-	}
-
-	stderr(chunk: string): void {
-		this.append(vscode.NotebookCellOutputItem.stderr(chunk));
+	private enqueue(work: () => Thenable<unknown>): void {
+		// A failed append must not break the chain: the build still has to end.
+		this.queue = this.queue.then(work).then(undefined, () => undefined);
 	}
 
 	flush(): Promise<unknown> {
 		return this.queue;
 	}
+}
+
+function itemFor(kind: StreamKind, text: string): vscode.NotebookCellOutputItem {
+	return kind === 'stderr'
+		? vscode.NotebookCellOutputItem.stderr(text)
+		: vscode.NotebookCellOutputItem.stdout(text);
 }
 
 export class CompilerNotebookController {
@@ -78,6 +97,19 @@ export class CompilerNotebookController {
 		// anything the editor is not already showing.
 		this.diagnostics.refresh(notebook);
 
+		// A file cell that belongs to no project is a notebook-wide problem: the
+		// build it was meant to be part of just quietly misses a file, and the
+		// compiler error that follows never mentions it. Say so on every build.
+		const strays: string[] = [];
+		for (const cell of notebook.getCells()) {
+			if (ownerOf.has(cell)) {
+				continue;
+			}
+			for (const problem of diagnosticsOf.get(cell) ?? []) {
+				strays.push(problem.message);
+			}
+		}
+
 		// De-duplicate: build each distinct project once, no matter how many of
 		// its cells were run.
 		const pending = new Map<Project<CellAdapter>, vscode.NotebookCell[]>();
@@ -107,7 +139,7 @@ export class CompilerNotebookController {
 			// Output always lands on the buildspec cell, whichever cell was run.
 			const primary = project.specCell.cell;
 			const secondary = requested.filter((cell) => cell !== primary);
-			await this.buildProject(project, primary, secondary, diagnosticsOf);
+			await this.buildProject(project, primary, secondary, diagnosticsOf, strays);
 		}
 	}
 
@@ -129,15 +161,16 @@ export class CompilerNotebookController {
 		project: Project<CellAdapter>,
 		primary: vscode.NotebookCell,
 		secondary: readonly vscode.NotebookCell[],
-		diagnosticsOf: ReadonlyMap<vscode.NotebookCell, readonly { message: string }[]>
+		diagnosticsOf: ReadonlyMap<vscode.NotebookCell, readonly { message: string }[]>,
+		strays: readonly string[]
 	): Promise<void> {
 		const execution = this.controller.createNotebookCellExecution(primary);
 		execution.executionOrder = ++this.executionOrder;
 		execution.start(Date.now());
 
-		const output = new vscode.NotebookCellOutput([]);
-		await execution.replaceOutput(output);
-		const sink = new ExecutionSink(execution, output);
+		await execution.clearOutput();
+		const target = new CellOutputTarget(execution);
+		const sink = new TruncatingSink(target);
 
 		// Also squiggled in the editor, but repeated here so the output is a
 		// complete record of what this build actually did.
@@ -146,6 +179,9 @@ export class CompilerNotebookController {
 			for (const problem of diagnosticsOf.get(cell) ?? []) {
 				sink.stderr(`warning: ${problem.message}\n`);
 			}
+		}
+		for (const stray of strays) {
+			sink.stderr(`warning: ${stray}\n`);
 		}
 
 		const summary =
@@ -159,10 +195,11 @@ export class CompilerNotebookController {
 			const result = await buildAndRun(project, sink, execution.token);
 			success = result.success;
 		} catch (err) {
-			sink.stderr(`Internal error: ${err instanceof Error ? err.stack : String(err)}\n`);
+			sink.info(`Internal error: ${err instanceof Error ? err.stack : String(err)}\n`);
 		}
 
-		await sink.flush();
+		sink.finish();
+		await target.flush();
 		execution.end(success, Date.now());
 
 		for (const cell of secondary) {

@@ -2,7 +2,7 @@
   "name": "compiler-notebook",
   "displayName": "Compiler Notebook",
   "description": "Jupyter-like notebooks for compiled languages (C++, Rust, Zig)",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "license": "MIT",
   "publisher": "andreysigorskikh",
   "private": true,
@@ -46,7 +46,7 @@
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
     "package": "npx --yes @vscode/vsce package --skip-license",
-    "test": "node --test out/test/",
+    "test": "node --test out/test/*.test.js",
     "pretest": "npm run compile"
   },
   "devDependencies": {
