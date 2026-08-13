@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "cells": [
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "value": "# Zig\n\nZig is the case that proves the argument builder has to be per-language: there\nis no `-o`. The command line is `zig build-exe main.zig --name greeter` — a\nsubcommand, and the binary named by a flag.\n\nLike Rust, `zig` is pointed at **one root file**; the cell below it is written\ninto the build dir and reached with `@import`."
+    },
+    {
+      "kind": "code",
+      "language": "toml",
+      "value": "# Defaults for a zig project: the `zig` compiler, no flags (Debug).\n# Add e.g. flags = [\"-OReleaseFast\"] to change that.\nmode   = \"run\"\noutput = \"greeter\"\n"
+    },
+    {
+      "kind": "code",
+      "language": "zig",
+      "value": "const std = @import(\"std\");\n\npub const names = [_][]const u8{ \"world\", \"zig\" };\n\n/// Builds the greeting. Zig has no hidden allocator, so a function that\n/// returns a new string has to be handed one — and the caller owns the result.\npub fn greeting(gpa: std.mem.Allocator, name: []const u8) ![]u8 {\n    return std.fmt.allocPrint(gpa, \"hello, {s}, from a compiler notebook\", .{name});\n}\n",
+      "metadata": {
+        "role": "file",
+        "filename": "greeter.zig"
+      }
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "value": "`@import(\"greeter.zig\")` resolves against the build directory, so the import\nstring and the file name on the cell above have to match.\n\n`std.process.Init` is where the entry point gets its allocator and its I/O — the\ncell below passes the arena to `greeting` and lets it go out of scope at the end\nof `main`.\n\n> Written against zig 0.17-dev, whose `std.Io` is still moving. On an older\n> toolchain, take the allocator from a `std.heap.GeneralPurposeAllocator` and\n> print with `std.debug.print(\"{s}\\n\", .{line})` instead."
+    },
+    {
+      "kind": "code",
+      "language": "zig",
+      "value": "const std = @import(\"std\");\nconst greeter = @import(\"greeter.zig\");\n\npub fn main(init: std.process.Init) !void {\n    // The arena is freed when main returns, so the greetings need no defer.\n    const gpa = init.arena.allocator();\n\n    var buf: [256]u8 = undefined;\n    var out = std.Io.File.stdout().writerStreaming(init.io, &buf);\n\n    for (greeter.names) |name| {\n        const line = try greeter.greeting(gpa, name);\n        try out.interface.print(\"{s}\\n\", .{line});\n    }\n    try out.flush();\n}\n",
+      "metadata": {
+        "role": "file",
+        "filename": "main.zig"
+      }
+    }
+  ]
+}

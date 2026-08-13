@@ -7,9 +7,15 @@ between runs.
 
 See [CLAUDE.md](CLAUDE.md) for the full design.
 
-## Status — phase 4
+## Status — phase 5
 
 - `.cnb` JSON notebook format (`NotebookSerializer`), metadata round-trips.
+- **C, C++, Rust and Zig.** A project's language comes from its cells, and with
+  it the compiler, the default flags and the shape of the command line — all
+  from one table in `src/languages.ts`. C and C++ hand every translation unit to
+  the compiler; Rust and Zig are pointed at a single **root** file (the cell with
+  the entry point) and reach the rest through `mod` / `@import`. Zig has no `-o`,
+  so it gets `zig build-exe main.zig --name app`.
 - **Buildspec cells**: a `toml` cell opens a project and configures it. All four
   keys are optional; unknown keys and bad values warn instead of failing.
 
@@ -49,8 +55,8 @@ See [CLAUDE.md](CLAUDE.md) for the full design.
 - A `// @file x.cpp` directive is persisted into `metadata.filename` when the
   project is run, and a rename keeps the directive line in step.
 
-Next up (phase 5): Rust and Zig, which should be table entries plus a per-language
-argument builder — `zig build-exe` does not take `-o`.
+All six phases of the plan in [CLAUDE.md](CLAUDE.md) §8 are in, except the
+optional rich output renderer.
 
 ## Develop
 
@@ -70,6 +76,11 @@ example and run a cell:
 | --- | --- |
 | `examples/hello.cnb` | Two independent projects, prose inside a project, `mode = "build"`. |
 | `examples/assets.cnb` | Sub-directories in filenames, an asset cell read at runtime. |
+| `examples/rust.cnb` | A Rust crate across two cells, joined by `mod`. |
+| `examples/zig.cnb` | A Zig program across two cells, joined by `@import`. |
+
+Zig cells need the Zig extension installed for `zig` to exist as a language id
+(and for highlighting); `rust`, `c` and `cpp` are built into VS Code.
 
 Packaging:
 

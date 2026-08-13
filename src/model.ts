@@ -20,6 +20,11 @@ export interface BuildSpec {
 	readonly mode: BuildMode;
 	/** Binary name, without platform suffix. */
 	readonly output: string;
+	/**
+	 * languageId of the project's source cells. Resolved, not stated: it selects
+	 * the compiler defaults and the argument builder.
+	 */
+	readonly language?: string;
 }
 
 /** What a buildspec cell actually stated; everything else is defaulted. */

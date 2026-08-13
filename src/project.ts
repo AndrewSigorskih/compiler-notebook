@@ -52,7 +52,6 @@ export function classifyCell(cell: CellLike): CellRole {
 	return statedFilename(cell) === undefined ? 'other' : 'file';
 }
 
-const HAS_MAIN = /\bint\s+main\s*\(/;
 const LOOKS_LIKE_HEADER = /^\s*#\s*pragma\s+once|^\s*#\s*ifndef\s+\w+\s*\n\s*#\s*define\s+\w+/m;
 
 /** Deterministic auto-name for a cell with no explicit filename (CLAUDE.md §6). */
@@ -60,7 +59,9 @@ export function autoFilename(cell: CellLike, indexWithinProject: number): string
 	const config = languageConfig(cell.languageId);
 	const sourceExt = config?.sourceExtension ?? '.txt';
 
-	if (HAS_MAIN.test(cell.value)) {
+	// Each language spells its entry point differently, so the pattern comes
+	// from the table (`int main`, `fn main`, `pub fn main`).
+	if (config?.mainPattern.test(cell.value)) {
 		return `main${sourceExt}`;
 	}
 	if (config?.headerExtension && LOOKS_LIKE_HEADER.test(cell.value)) {

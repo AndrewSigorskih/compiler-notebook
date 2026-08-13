@@ -91,6 +91,12 @@ describe('autoFilename', () => {
 	test('anything else is unit_<index>.<ext>', () => {
 		assert.strictEqual(autoFilename(code('cpp', 'void f() {}'), 2), 'unit_2.cpp');
 	});
+
+	test('each language spells its entry point its own way', () => {
+		assert.strictEqual(autoFilename(code('rust', 'fn main() {}'), 0), 'main.rs');
+		assert.strictEqual(autoFilename(code('zig', 'pub fn main() void {}'), 0), 'main.zig');
+		assert.strictEqual(autoFilename(code('rust', 'pub fn helper() {}'), 1), 'unit_1.rs');
+	});
 });
 
 describe('resolveProjects', () => {
@@ -173,6 +179,17 @@ describe('resolveProjects', () => {
 		const result = resolveProjects([code('toml', ''), code('c', 'int main() { return 0; }')]);
 		assert.strictEqual(result.projects[0].spec.compiler, 'gcc');
 		assert.deepStrictEqual(result.projects[0].spec.flags, ['-std=c17', '-O2', '-Wall', '-Wextra']);
+	});
+
+	test('rust and zig projects default to their own compiler', () => {
+		const rust = resolveProjects([code('toml', ''), code('rust', 'fn main() {}')]);
+		assert.strictEqual(rust.projects[0].spec.compiler, 'rustc');
+		assert.strictEqual(rust.projects[0].spec.language, 'rust');
+		assert.deepStrictEqual(rust.projects[0].spec.flags, ['--edition=2021', '-O']);
+
+		const zig = resolveProjects([code('toml', ''), code('zig', 'pub fn main() void {}')]);
+		assert.strictEqual(zig.projects[0].spec.compiler, 'zig');
+		assert.strictEqual(zig.projects[0].spec.language, 'zig');
 	});
 
 	test('a header-only cell does not decide the project language', () => {

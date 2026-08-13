@@ -374,6 +374,7 @@ export function resolveSpec(partial: PartialBuildSpec, languageId: string | unde
 		compiler: partial.compiler ?? config?.defaultCompiler ?? FALLBACK_COMPILER,
 		flags: partial.flags ?? config?.defaultFlags ?? [],
 		mode: partial.mode ?? DEFAULT_MODE,
-		output: partial.output ?? DEFAULT_OUTPUT
+		output: partial.output ?? DEFAULT_OUTPUT,
+		language: languageId
 	};
 }

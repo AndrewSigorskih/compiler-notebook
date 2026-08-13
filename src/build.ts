@@ -10,8 +10,13 @@ import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 
-import { isCompilableFilename } from './languages';
-import { CellLike, Project } from './model';
+import {
+	binaryName,
+	isCompilableFilename,
+	languageConfig,
+	LanguageConfig
+} from './languages';
+import { BuildSpec, CellLike, Project, ProjectFile } from './model';
 
 export interface OutputSink {
 	/** Extension-generated chatter: command lines, exit codes, notices. */
@@ -82,17 +87,71 @@ function formatCommand(command: string, args: readonly string[]): string {
 	return [command, ...args].map(quoteArg).join(' ');
 }
 
-function binaryName(output: string): string {
-	return process.platform === 'win32' ? `${output}.exe` : output;
+/**
+ * The file a `root`-input compiler is pointed at: rustc and zig take one file
+ * and follow `mod`/`@import` from there.
+ *
+ * The entry point wins, by content and then by name, so a project whose cells
+ * happen to be ordered helper-first still builds.
+ */
+export function selectRoot<T extends CellLike>(
+	config: LanguageConfig,
+	files: readonly ProjectFile<T>[]
+): ProjectFile<T> | undefined {
+	return (
+		files.find((file) => config.mainPattern.test(file.cell.value)) ??
+		files.find((file) => file.filename === `main${config.sourceExtension}`) ??
+		files[0]
+	);
 }
 
-/** Compiler args: `<compiler> <flags...> <sources...> -o <output>` (CLAUDE.md §5). */
-export function compilerArgs(
-	flags: readonly string[],
-	sources: readonly string[],
-	output: string
-): string[] {
-	return [...flags, ...sources, '-o', binaryName(output)];
+export interface BuildCommand {
+	readonly args: readonly string[];
+	/** Files actually handed to the compiler. */
+	readonly sources: readonly string[];
+}
+
+/**
+ * Assemble the compiler command line for a project (CLAUDE.md §5).
+ *
+ * Everything language-specific comes out of the table: which files are inputs,
+ * whether the compiler takes all of them or just a root, and how its arguments
+ * are spelled.
+ */
+export function buildCommand<T extends CellLike>(
+	spec: BuildSpec,
+	files: readonly ProjectFile<T>[]
+): BuildCommand {
+	const config = spec.language === undefined ? undefined : languageConfig(spec.language);
+	const compilable = files.filter((file) => isCompilableFilename(file.filename, config));
+
+	let sources = compilable;
+	if (config?.inputs === 'root') {
+		const root = selectRoot(config, compilable);
+		sources = root ? [root] : [];
+	}
+
+	const names = sources.map((file) => file.filename);
+	const context = {
+		flags: spec.flags,
+		sources: names,
+		output: spec.output,
+		binary: binaryName(spec.output)
+	};
+
+	return {
+		args: config ? config.buildArgs(context) : dashOStyleFallback(context),
+		sources: names
+	};
+}
+
+/** Used when a project's language is not in the table at all. */
+function dashOStyleFallback(context: {
+	flags: readonly string[];
+	sources: readonly string[];
+	binary: string;
+}): string[] {
+	return [...context.flags, ...context.sources, '-o', context.binary];
 }
 
 export async function buildAndRun<T extends CellLike>(
@@ -126,9 +185,10 @@ async function buildAndRunIn<T extends CellLike>(
 	}
 	sink.info(`$ cd ${dir}\n`);
 
-	// Headers and data files live in the dir so `#include` and runtime reads
-	// work, but only translation units go on the command line.
-	const sources = files.map((f) => f.filename).filter(isCompilableFilename);
+	// Headers, imported modules and data files live in the dir so `#include`,
+	// `@import` and runtime reads work; only what the compiler is meant to be
+	// pointed at goes on the command line.
+	const { args, sources } = buildCommand(spec, files);
 	if (sources.length === 0) {
 		sink.stderr(
 			files.length === 0
@@ -138,7 +198,6 @@ async function buildAndRunIn<T extends CellLike>(
 		return { success: false, compileExitCode: null, cancelled: false };
 	}
 
-	const args = compilerArgs(spec.flags, sources, spec.output);
 	sink.info(`$ ${formatCommand(spec.compiler, args)}\n`);
 
 	if (token.isCancellationRequested) {

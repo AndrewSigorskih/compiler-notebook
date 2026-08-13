@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "cells": [
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "value": "# Rust\n\nNothing about a Rust project is special-cased — `compiler` and `flags` default\nfrom the language of the cells, so an empty buildspec cell is enough.\n\nThe one real difference is that **`rustc` compiles a crate root, not a file\nlist**. The cell holding `fn main` is the root; every other cell is written into\nthe build dir beside it and reached with `mod`."
+    },
+    {
+      "kind": "code",
+      "language": "toml",
+      "value": "# Defaults for a rust project: rustc --edition=2021 -O\nmode   = \"run\"\noutput = \"greeter\"\n"
+    },
+    {
+      "kind": "code",
+      "language": "rust",
+      "value": "pub struct Greeter {\n    name: String,\n}\n\nimpl Greeter {\n    pub fn new(name: &str) -> Self {\n        Self { name: name.to_string() }\n    }\n\n    pub fn greet(&self) -> String {\n        format!(\"hello, {}, from a compiler notebook\", self.name)\n    }\n}\n",
+      "metadata": {
+        "role": "file",
+        "filename": "greeter.rs"
+      }
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "value": "`mod greeter;` is what pulls the cell above into the crate. The file has to be\nnamed `greeter.rs` for that to work, which is exactly what the status bar on\nthat cell shows."
+    },
+    {
+      "kind": "code",
+      "language": "rust",
+      "value": "mod greeter;\n\nuse greeter::Greeter;\n\nfn main() {\n    let who = [\"world\", \"rustc\"];\n    for name in who {\n        println!(\"{}\", Greeter::new(name).greet());\n    }\n}\n",
+      "metadata": {
+        "role": "file",
+        "filename": "main.rs"
+      }
+    }
+  ]
+}

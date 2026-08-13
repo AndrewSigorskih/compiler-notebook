@@ -10,8 +10,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { after, before, describe, test } from 'node:test';
 
-import { buildAndRun, compilerArgs, OutputSink } from '../build';
-import { BuildSpec, CellLike, Project } from '../model';
+import { buildAndRun, buildCommand, OutputSink } from '../build';
+import { BuildSpec, CellLike, Project, ProjectFile } from '../model';
 
 const POSIX = process.platform !== 'win32';
 
@@ -115,15 +115,84 @@ function reported(text: string, prefix: 'ARGS' | 'FILE'): string[] {
 		.map((line) => line.slice(prefix.length + 2));
 }
 
-describe('compilerArgs', () => {
-	test('flags come before sources, output last', () => {
-		assert.deepStrictEqual(compilerArgs(['-O2'], ['a.cpp', 'b.cpp'], 'app'), [
-			'-O2',
-			'a.cpp',
-			'b.cpp',
-			'-o',
-			process.platform === 'win32' ? 'app.exe' : 'app'
-		]);
+describe('buildCommand', () => {
+	const binary = process.platform === 'win32' ? 'app.exe' : 'app';
+
+	function files(
+		entries: readonly { filename: string; value?: string }[]
+	): ProjectFile<CellLike>[] {
+		return entries.map((entry) => ({
+			cell: cell('plaintext', entry.value ?? ''),
+			filename: entry.filename
+		}));
+	}
+
+	function spec(language: string | undefined, flags: readonly string[] = []): BuildSpec {
+		return { compiler: 'cc', flags, mode: 'build', output: 'app', language };
+	}
+
+	test('C++ takes every translation unit, flags first and output last', () => {
+		const command = buildCommand(
+			spec('cpp', ['-O2']),
+			files([{ filename: 'util.hpp' }, { filename: 'a.cpp' }, { filename: 'b.cpp' }])
+		);
+		assert.deepStrictEqual(command.args, ['-O2', 'a.cpp', 'b.cpp', '-o', binary]);
+	});
+
+	test('a C++ project may include C translation units', () => {
+		const command = buildCommand(spec('cpp'), files([{ filename: 'a.cpp' }, { filename: 'b.c' }]));
+		assert.deepStrictEqual(command.sources, ['a.cpp', 'b.c']);
+	});
+
+	test('a source file of another language is never handed to the compiler', () => {
+		const command = buildCommand(spec('cpp'), files([{ filename: 'a.cpp' }, { filename: 'b.rs' }]));
+		assert.deepStrictEqual(command.sources, ['a.cpp']);
+	});
+
+	test('rustc gets the crate root only; the rest are pulled in by `mod`', () => {
+		const command = buildCommand(
+			spec('rust', ['--edition=2021']),
+			files([
+				{ filename: 'util.rs', value: 'pub fn util() {}' },
+				{ filename: 'main.rs', value: 'mod util;\nfn main() {}' }
+			])
+		);
+		assert.deepStrictEqual(command.args, ['--edition=2021', 'main.rs', '-o', binary]);
+	});
+
+	test('zig uses a subcommand and --name, not -o', () => {
+		const command = buildCommand(
+			spec('zig'),
+			files([
+				{ filename: 'util.zig', value: 'pub fn greeting() void {}' },
+				{ filename: 'main.zig', value: 'pub fn main() void {}' }
+			])
+		);
+		assert.deepStrictEqual(command.args, ['build-exe', 'main.zig', '--name', 'app']);
+	});
+
+	test('the root is the entry point, whatever the cell order or file name', () => {
+		const command = buildCommand(
+			spec('rust'),
+			files([
+				{ filename: 'helper.rs', value: 'pub fn helper() {}' },
+				{ filename: 'app.rs', value: 'fn main() {}' }
+			])
+		);
+		assert.deepStrictEqual(command.sources, ['app.rs']);
+	});
+
+	test('with no entry point at all, the first file is the root', () => {
+		const command = buildCommand(
+			spec('zig'),
+			files([{ filename: 'a.zig' }, { filename: 'b.zig' }])
+		);
+		assert.deepStrictEqual(command.sources, ['a.zig']);
+	});
+
+	test('an unknown language falls back to a -o command line', () => {
+		const command = buildCommand(spec(undefined), files([{ filename: 'a.cpp' }]));
+		assert.deepStrictEqual(command.args, ['a.cpp', '-o', binary]);
 	});
 });
 
