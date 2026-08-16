@@ -360,6 +360,28 @@ export function parseBuildSpec(text: string): SpecParse {
 	return { partial, warnings };
 }
 
+/**
+ * A ready-to-edit buildspec cell body for a language, filled in with exactly the
+ * defaults that language would have used anyway.
+ *
+ * Writing the defaults out rather than leaving the cell empty is the point: an
+ * empty buildspec works, but it teaches nothing about what can be changed.
+ */
+export function defaultBuildspecText(languageId: string): string {
+	const spec = resolveSpec({}, languageId);
+	const flags = `[${spec.flags.map((flag) => JSON.stringify(flag)).join(', ')}]`;
+	const pad = (key: string) => key.padEnd('compiler'.length);
+
+	return [
+		`# ${languageId} project. Every key is optional; these are the defaults.`,
+		`${pad('compiler')} = ${JSON.stringify(spec.compiler)}`,
+		`${pad('flags')} = ${flags}`,
+		`${pad('mode')} = ${JSON.stringify(spec.mode)}`,
+		`${pad('output')} = ${JSON.stringify(spec.output)}`,
+		''
+	].join('\n');
+}
+
 export const DEFAULT_MODE: BuildMode = 'run';
 export const DEFAULT_OUTPUT = 'app';
 export const FALLBACK_COMPILER = 'g++';

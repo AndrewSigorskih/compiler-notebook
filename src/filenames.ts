@@ -10,6 +10,7 @@
 import * as vscode from 'vscode';
 
 import { BUILDSPEC_LANGUAGE_ID, NOTEBOOK_TYPE } from './model';
+import { isEmptyCodeCell, newProjectItem } from './newproject';
 import { CellAdapter, resolveNotebook } from './notebook';
 import { filenameDirective, sanitizeFilename, statedFilename } from './project';
 
@@ -71,12 +72,21 @@ export class CellStatusBarProvider implements vscode.NotebookCellStatusBarItemPr
 			return [];
 		}
 
+		const items: vscode.NotebookCellStatusBarItem[] = [];
+
+		// Offered on any empty code cell, including one already inside a project:
+		// starting a *second* project in a notebook has to stay reachable. It is
+		// only ever offered where there is no content to destroy.
+		if (isEmptyCodeCell(cell)) {
+			items.push(newProjectItem(cell));
+		}
+
 		const resolution = resolveNotebook(cell.notebook);
 		const project = resolution.ownerOf.get(cell);
 
 		if (cell.document.languageId === BUILDSPEC_LANGUAGE_ID) {
 			if (!project) {
-				return [];
+				return items;
 			}
 			const item = new vscode.NotebookCellStatusBarItem(
 				`$(gear) ${project.spec.compiler} · ${project.spec.mode} · ${project.files.length} file(s)`,
@@ -89,12 +99,13 @@ export class CellStatusBarProvider implements vscode.NotebookCellStatusBarItemPr
 				`mode: ${project.spec.mode}`,
 				`output: ${project.spec.output}`
 			].join('\n');
-			return [item];
+			items.push(item);
+			return items;
 		}
 
 		const filename = resolution.filenameOf.get(cell);
 		if (filename === undefined) {
-			return [];
+			return items;
 		}
 
 		const stated = statedFilename(new CellAdapter(cell));
@@ -115,7 +126,8 @@ export class CellStatusBarProvider implements vscode.NotebookCellStatusBarItemPr
 			: renamed
 				? `You asked for "${stated}"; using "${filename}". Click to rename.`
 				: 'Click to rename this cell.';
-		return [item];
+		items.push(item);
+		return items;
 	}
 }
 

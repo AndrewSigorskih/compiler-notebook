@@ -48,6 +48,12 @@ See [CLAUDE.md](CLAUDE.md) for the full design.
   keeping the **head** — the first error is the one that caused the rest — and
   the command lines and exit code are never cut.
 - Cancellation kills the child process; temp dirs are always cleaned up.
+- **New project**: an empty code cell offers `$(rocket) New project` in its
+  status bar — pick a language and the cell becomes a buildspec cell filled in
+  with that language's defaults, followed by an empty source cell in that
+  language, with the cursor in it. Without it, turning a cell into a project
+  means knowing that the language picker in the corner is what does it. Also on
+  the command palette as **Compiler Notebook: New Project**.
 - **Named cells**: every file cell carries a status bar item with the name it
   will be written under — auto-generated names are labelled `(auto)` so they are
   never a surprise. Click it (or run **Compiler Notebook: Rename File Cell**) to
@@ -113,3 +119,4 @@ code --install-extension compiler-notebook-0.0.1.vsix
 | `src/controller.ts` | The kernel: resolve → dedupe → build → stream output. |
 | `src/diagnostics.ts` | Soft problems as editor squiggles on a `DiagnosticCollection`. |
 | `src/filenames.ts` | Cell status bar items, the rename command, `@file` sync-back. |
+| `src/newproject.ts` | The "New project" affordance on an empty cell. |

@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import { test, describe } from 'node:test';
 
-import { parseBuildSpec, parseToml, resolveSpec } from '../buildspec';
+import { defaultBuildspecText, parseBuildSpec, parseToml, resolveSpec } from '../buildspec';
 
 describe('parseToml', () => {
 	test('reads strings, arrays, booleans and numbers', () => {
@@ -105,6 +105,40 @@ describe('parseBuildSpec', () => {
 		const { partial, warnings } = parseBuildSpec('output = "../escape"');
 		assert.strictEqual(partial.output, undefined);
 		assert.match(warnings[0].message, /plain file name/);
+	});
+});
+
+describe('defaultBuildspecText', () => {
+	test('states the defaults a project of that language would have used', () => {
+		assert.strictEqual(
+			defaultBuildspecText('cpp'),
+			[
+				'# cpp project. Every key is optional; these are the defaults.',
+				'compiler = "g++"',
+				'flags    = ["-std=c++20", "-O2", "-Wall", "-Wextra"]',
+				'mode     = "run"',
+				'output   = "app"',
+				''
+			].join('\n')
+		);
+	});
+
+	test('a language with no default flags still writes a usable array', () => {
+		assert.match(defaultBuildspecText('zig'), /^flags {4}= \[\]$/m);
+	});
+
+	test('what it writes parses back into exactly the defaults', () => {
+		// The generated cell must be a no-op: filling it in must not change how
+		// the project builds.
+		for (const languageId of ['cpp', 'c', 'rust', 'zig']) {
+			const { partial, warnings } = parseBuildSpec(defaultBuildspecText(languageId));
+			assert.deepStrictEqual(warnings, [], languageId);
+			assert.deepStrictEqual(
+				resolveSpec(partial, languageId),
+				resolveSpec({}, languageId),
+				languageId
+			);
+		}
 	});
 });
 

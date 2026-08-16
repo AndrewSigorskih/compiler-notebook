@@ -4,6 +4,7 @@ import { CompilerNotebookController } from './controller';
 import { NotebookDiagnostics } from './diagnostics';
 import { CellStatusBarProvider, RENAME_COMMAND, renameFileCell } from './filenames';
 import { NOTEBOOK_TYPE } from './model';
+import { NEW_PROJECT_COMMAND, newProject } from './newproject';
 import { CompilerNotebookSerializer } from './serializer';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -18,7 +19,8 @@ export function activate(context: vscode.ExtensionContext): void {
 		new CompilerNotebookController(diagnostics),
 		statusBar,
 		vscode.notebooks.registerNotebookCellStatusBarItemProvider(NOTEBOOK_TYPE, statusBar),
-		vscode.commands.registerCommand(RENAME_COMMAND, renameFileCell)
+		vscode.commands.registerCommand(RENAME_COMMAND, renameFileCell),
+		vscode.commands.registerCommand(NEW_PROJECT_COMMAND, newProject)
 	);
 }
 
