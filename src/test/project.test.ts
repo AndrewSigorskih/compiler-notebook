@@ -2,13 +2,7 @@ import * as assert from 'assert';
 import { test, describe } from 'node:test';
 
 import { CellLike } from '../model';
-import {
-	autoFilename,
-	classifyCell,
-	filenameDirective,
-	resolveProjects,
-	sanitizeFilename
-} from '../project';
+import { autoFilename, classifyCell, resolveProjects, sanitizeFilename } from '../project';
 
 function code(languageId: string, value: string, metadata?: Record<string, unknown>): CellLike {
 	return { kind: 'code', languageId, value, metadata };
@@ -38,7 +32,14 @@ describe('classifyCell', () => {
 
 	test('a named cell of any language is an asset file cell', () => {
 		assert.strictEqual(classifyCell(code('json', '{}', { filename: 'data.json' })), 'file');
-		assert.strictEqual(classifyCell(code('plaintext', '# @file notes.txt\nhi')), 'file');
+		assert.strictEqual(
+			classifyCell(code('plaintext', 'notes', { filename: 'notes.txt' })),
+			'file'
+		);
+	});
+
+	test('an unnamed cell of an unknown language stays out of the project', () => {
+		assert.strictEqual(classifyCell(code('plaintext', 'just some text')), 'other');
 	});
 });
 
@@ -66,16 +67,6 @@ describe('sanitizeFilename', () => {
 	test('a name with nothing usable in it is rejected', () => {
 		assert.strictEqual(sanitizeFilename('  '), undefined);
 		assert.strictEqual(sanitizeFilename('../..'), undefined);
-	});
-});
-
-describe('filenameDirective', () => {
-	test('reads a leading @file comment', () => {
-		assert.strictEqual(filenameDirective('// @file matrix.hpp\n#pragma once\n'), 'matrix.hpp');
-	});
-
-	test('ignores directives that are not on the first line', () => {
-		assert.strictEqual(filenameDirective('#pragma once\n// @file matrix.hpp\n'), undefined);
 	});
 });
 
@@ -211,12 +202,20 @@ describe('resolveProjects', () => {
 		assert.strictEqual(result.diagnostics[0].line, 1);
 	});
 
-	test('explicit metadata beats the @file directive', () => {
+	test('explicit metadata beats the auto-generated name', () => {
 		const result = resolveProjects([
 			code('toml', ''),
-			code('cpp', '// @file directive.cpp\nint main() {}', { filename: 'explicit.cpp' })
+			code('cpp', 'int main() {}', { filename: 'explicit.cpp' })
 		]);
 		assert.strictEqual(result.projects[0].files[0].filename, 'explicit.cpp');
+	});
+
+	test('a comment that looks like a directive is just a comment', () => {
+		const result = resolveProjects([
+			code('toml', ''),
+			code('cpp', '// @file ignored.cpp\nint main() {}')
+		]);
+		assert.strictEqual(result.projects[0].files[0].filename, 'main.cpp');
 	});
 
 	test('an escaping filename is neutralised and reported on its cell', () => {

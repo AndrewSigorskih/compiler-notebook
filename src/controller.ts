@@ -7,7 +7,6 @@ import * as vscode from 'vscode';
 
 import { buildAndRun } from './build';
 import { NotebookDiagnostics } from './diagnostics';
-import { syncFileDirectives } from './filenames';
 import { NOTEBOOK_TYPE, Project } from './model';
 import { CellAdapter, resolveNotebook } from './notebook';
 import { StreamKind, StreamTarget, TruncatingSink } from './output';
@@ -88,10 +87,6 @@ export class CompilerNotebookController {
 		cells: vscode.NotebookCell[],
 		notebook: vscode.NotebookDocument
 	): Promise<void> {
-		// Running is an explicit action, so it is a fair moment to persist any
-		// `// @file` directive into cell metadata (CLAUDE.md §4).
-		await syncFileDirectives(notebook);
-
 		const { ownerOf, diagnosticsOf } = resolveNotebook(notebook);
 		// The squiggles are refreshed on a debounce; a run should not report
 		// anything the editor is not already showing.

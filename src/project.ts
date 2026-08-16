@@ -18,21 +18,20 @@ import {
 	ResolveResult
 } from './model';
 
-/** `// @file matrix.hpp` on the first line (CLAUDE.md §4). */
-const FILE_DIRECTIVE = /^\s*(?:\/\/|#|;)\s*@file\s+(\S+)\s*$/;
-
-export function filenameDirective(value: string): string | undefined {
-	const firstLine = value.split('\n', 1)[0] ?? '';
-	return FILE_DIRECTIVE.exec(firstLine)?.[1];
-}
-
-/** The name a cell states outright, before sanitisation. */
+/**
+ * The name a cell states outright, before sanitisation.
+ *
+ * Metadata is the only way to state one. A `// @file x.cpp` directive was
+ * supported and removed: it only counted on the very first line, so a leading
+ * blank line silently reverted the cell to an auto-name with nothing to explain
+ * why. The status bar item names a cell visibly instead.
+ */
 export function statedFilename(cell: CellLike): string | undefined {
 	const explicit = cell.metadata?.['filename'];
 	if (typeof explicit === 'string' && explicit.trim().length > 0) {
 		return explicit.trim();
 	}
-	return filenameDirective(cell.value);
+	return undefined;
 }
 
 export function classifyCell(cell: CellLike): CellRole {
@@ -119,7 +118,7 @@ export function sanitizeFilename(raw: string): ResolvedName | undefined {
 	return { filename: segments.join('/') };
 }
 
-/** metadata.filename → `@file` directive → auto-generated. First hit wins. */
+/** metadata.filename → auto-generated. First hit wins. */
 export function resolveFilename(cell: CellLike, indexWithinProject: number): ResolvedName {
 	const stated = statedFilename(cell);
 	if (stated !== undefined) {

@@ -36,8 +36,8 @@ See [CLAUDE.md](CLAUDE.md) for the full design.
   diagnostic and are not built.
 - Running *any* cell builds its owning project; distinct projects are built once
   each, and output always lands on the project's buildspec cell.
-- Filename resolution (`metadata.filename` → `// @file x.cpp` → auto-generated),
-  collision auto-suffixing scoped per project.
+- Filename resolution (`metadata.filename` → auto-generated), collision
+  auto-suffixing scoped per project.
 - **Multi-file build dirs**: sub-directories in a filename (`src/util.cpp`) are
   created; names that would escape the build dir are reduced to their base name
   and reported. Only translation units go on the compiler command line, so
@@ -62,8 +62,6 @@ See [CLAUDE.md](CLAUDE.md) for the full design.
 - **Diagnostics** are real editor warnings on a `DiagnosticCollection`, keyed on
   cell URIs and refreshed as you type — buildspec problems squiggle the offending
   line. They are repeated in the build output so a run stays self-contained.
-- A `// @file x.cpp` directive is persisted into `metadata.filename` when the
-  project is run, and a rename keeps the directive line in step.
 
 All six phases of the plan in [CLAUDE.md](CLAUDE.md) §8 are in, except the
 optional rich output renderer.
@@ -118,5 +116,5 @@ code --install-extension compiler-notebook-0.0.1.vsix
 | `src/notebook.ts` | `NotebookDocument` → resolver bridge, memoised per notebook version. |
 | `src/controller.ts` | The kernel: resolve → dedupe → build → stream output. |
 | `src/diagnostics.ts` | Soft problems as editor squiggles on a `DiagnosticCollection`. |
-| `src/filenames.ts` | Cell status bar items, the rename command, `@file` sync-back. |
+| `src/filenames.ts` | Cell status bar items and the rename command. |
 | `src/newproject.ts` | The "New project" affordance on an empty cell. |

@@ -12,7 +12,7 @@ import * as vscode from 'vscode';
 import { BUILDSPEC_LANGUAGE_ID, NOTEBOOK_TYPE } from './model';
 import { isEmptyCodeCell, newProjectItem } from './newproject';
 import { CellAdapter, resolveNotebook } from './notebook';
-import { filenameDirective, sanitizeFilename, statedFilename } from './project';
+import { sanitizeFilename, statedFilename } from './project';
 
 export const RENAME_COMMAND = 'compilerNotebook.renameFileCell';
 
@@ -194,67 +194,5 @@ export async function renameFileCell(target?: RenameTarget): Promise<void> {
 		metadata['filename'] = filename;
 	}
 	edit.set(cell.notebook.uri, [vscode.NotebookEdit.updateCellMetadata(cell.index, metadata)]);
-
-	// A stale `// @file` line would contradict the status bar, since metadata
-	// wins. Keep the two in step instead of leaving the user to reconcile them.
-	const directive = filenameDirective(cell.document.getText());
-	if (directive !== undefined && directive !== filename) {
-		const firstLine = cell.document.lineAt(0);
-		if (filename.length === 0) {
-			edit.delete(
-				cell.document.uri,
-				firstLine.rangeIncludingLineBreak ?? firstLine.range
-			);
-		} else {
-			edit.replace(
-				cell.document.uri,
-				firstLine.range,
-				firstLine.text.replace(directive, filename)
-			);
-		}
-	}
-
-	await vscode.workspace.applyEdit(edit);
-}
-
-/**
- * Persist `// @file x.cpp` into `metadata.filename` (CLAUDE.md §4).
- *
- * Done on execute rather than on open: it edits the notebook, and marking a file
- * dirty just because the user looked at it would be rude. Running a cell is an
- * explicit action, and the metadata is what the serializer round-trips.
- */
-export async function syncFileDirectives(notebook: vscode.NotebookDocument): Promise<void> {
-	const { filenameOf } = resolveNotebook(notebook);
-	const edits: vscode.NotebookEdit[] = [];
-
-	for (const cell of notebook.getCells()) {
-		if (!filenameOf.has(cell) || typeof cell.metadata?.['filename'] === 'string') {
-			continue;
-		}
-		const directive = filenameDirective(cell.document.getText());
-		if (directive === undefined) {
-			continue;
-		}
-		const sanitized = sanitizeFilename(directive);
-		if (!sanitized || sanitized.problem) {
-			// Leave a bad directive alone; it is already reported as a diagnostic.
-			continue;
-		}
-		edits.push(
-			vscode.NotebookEdit.updateCellMetadata(cell.index, {
-				...cell.metadata,
-				role: 'file',
-				filename: sanitized.filename
-			})
-		);
-	}
-
-	if (edits.length === 0) {
-		return;
-	}
-
-	const edit = new vscode.WorkspaceEdit();
-	edit.set(notebook.uri, edits);
 	await vscode.workspace.applyEdit(edit);
 }
