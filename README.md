@@ -9,7 +9,11 @@ See [CLAUDE.md](CLAUDE.md) for the full design.
 
 ## Status — phase 5
 
-- `.cnb` JSON notebook format (`NotebookSerializer`), metadata round-trips.
+- `.cnb` JSON notebook format (`NotebookSerializer`), metadata round-trips. Cell
+  text is stored **one line per array entry**, so `git diff` shows the line you
+  edited rather than the whole cell, and two people editing different parts of a
+  cell no longer conflict. Files written with the old single-string form still
+  open, and convert on the next save.
 - **C, C++, Rust and Zig.** A project's language comes from its cells, and with
   it the compiler, the default flags and the shape of the command line — all
   from one table in `src/languages.ts`. C and C++ hand every translation unit to
@@ -103,6 +107,7 @@ code --install-extension compiler-notebook-0.0.1.vsix
 | `src/project.ts` | Pure project resolver + filename resolution. Unit-tested. |
 | `src/build.ts` | Temp-dir assembly, compile, run, cancellation. No `vscode` import. |
 | `src/output.ts` | Output limiting. No `vscode` import. |
+| `src/cnb.ts` | The `.cnb` file format itself. No `vscode` import, round-trip tested. |
 | `src/serializer.ts` | `.cnb` ⇄ `NotebookData`. |
 | `src/notebook.ts` | `NotebookDocument` → resolver bridge, memoised per notebook version. |
 | `src/controller.ts` | The kernel: resolve → dedupe → build → stream output. |

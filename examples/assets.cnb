@@ -1,20 +1,51 @@
 {
-  "version": 1,
+  "version": 2,
   "cells": [
     {
       "kind": "markup",
       "language": "markdown",
-      "value": "# Sub-directories and asset cells\n\nA filename may contain a **relative sub-directory** — the build dir is laid out\nto match before the compiler runs. A cell of *any* language becomes an **asset\ncell** as soon as it has a filename: it is written into the build dir but never\npassed to the compiler, so the program can read it at runtime.\n\nThis project builds the layout below, then runs the binary with the build dir as\nits working directory:\n\n```\ninclude/message.hpp\nsrc/message.cpp\nsrc/main.cpp\ndata/message.txt      <- asset cell, not compiled\n```"
+      "value": [
+        "# Sub-directories and asset cells\n",
+        "\n",
+        "A filename may contain a **relative sub-directory** — the build dir is laid out\n",
+        "to match before the compiler runs. A cell of *any* language becomes an **asset\n",
+        "cell** as soon as it has a filename: it is written into the build dir but never\n",
+        "passed to the compiler, so the program can read it at runtime.\n",
+        "\n",
+        "This project builds the layout below, then runs the binary with the build dir as\n",
+        "its working directory:\n",
+        "\n",
+        "```\n",
+        "include/message.hpp\n",
+        "src/message.cpp\n",
+        "src/main.cpp\n",
+        "data/message.txt      <- asset cell, not compiled\n",
+        "```"
+      ]
     },
     {
       "kind": "code",
       "language": "toml",
-      "value": "compiler = \"g++\"\n# -Iinclude, because \"message.hpp\" is not next to the file that includes it.\nflags    = [\"-std=c++20\", \"-O2\", \"-Wall\", \"-Wextra\", \"-Iinclude\"]\nmode     = \"run\"\noutput   = \"reader\"\n"
+      "value": [
+        "compiler = \"g++\"\n",
+        "# -Iinclude, because \"message.hpp\" is not next to the file that includes it.\n",
+        "flags    = [\"-std=c++20\", \"-O2\", \"-Wall\", \"-Wextra\", \"-Iinclude\"]\n",
+        "mode     = \"run\"\n",
+        "output   = \"reader\"\n"
+      ]
     },
     {
       "kind": "code",
       "language": "cpp",
-      "value": "#pragma once\n\n#include <string>\n#include <vector>\n\n/// Reads a text file, relative to the build directory, into its lines.\nstd::vector<std::string> read_lines(const std::string& path);\n",
+      "value": [
+        "#pragma once\n",
+        "\n",
+        "#include <string>\n",
+        "#include <vector>\n",
+        "\n",
+        "/// Reads a text file, relative to the build directory, into its lines.\n",
+        "std::vector<std::string> read_lines(const std::string& path);\n"
+      ],
       "metadata": {
         "role": "file",
         "filename": "include/message.hpp"
@@ -23,7 +54,20 @@
     {
       "kind": "code",
       "language": "cpp",
-      "value": "#include \"message.hpp\"\n\n#include <fstream>\n\nstd::vector<std::string> read_lines(const std::string& path) {\n    std::vector<std::string> lines;\n    std::ifstream in(path);\n    for (std::string line; std::getline(in, line);) {\n        lines.push_back(line);\n    }\n    return lines;\n}\n",
+      "value": [
+        "#include \"message.hpp\"\n",
+        "\n",
+        "#include <fstream>\n",
+        "\n",
+        "std::vector<std::string> read_lines(const std::string& path) {\n",
+        "    std::vector<std::string> lines;\n",
+        "    std::ifstream in(path);\n",
+        "    for (std::string line; std::getline(in, line);) {\n",
+        "        lines.push_back(line);\n",
+        "    }\n",
+        "    return lines;\n",
+        "}\n"
+      ],
       "metadata": {
         "role": "file",
         "filename": "src/message.cpp"
@@ -32,7 +76,25 @@
     {
       "kind": "code",
       "language": "cpp",
-      "value": "#include \"message.hpp\"\n\n#include <cstddef>\n#include <iostream>\n\nint main() {\n    const std::vector<std::string> lines = read_lines(\"data/message.txt\");\n    if (lines.empty()) {\n        std::cerr << \"data/message.txt is missing or empty\\n\";\n        return 1;\n    }\n\n    for (std::size_t i = 0; i < lines.size(); ++i) {\n        std::cout << i + 1 << \": \" << lines[i] << '\\n';\n    }\n    return 0;\n}\n",
+      "value": [
+        "#include \"message.hpp\"\n",
+        "\n",
+        "#include <cstddef>\n",
+        "#include <iostream>\n",
+        "\n",
+        "int main() {\n",
+        "    const std::vector<std::string> lines = read_lines(\"data/message.txt\");\n",
+        "    if (lines.empty()) {\n",
+        "        std::cerr << \"data/message.txt is missing or empty\\n\";\n",
+        "        return 1;\n",
+        "    }\n",
+        "\n",
+        "    for (std::size_t i = 0; i < lines.size(); ++i) {\n",
+        "        std::cout << i + 1 << \": \" << lines[i] << '\\n';\n",
+        "    }\n",
+        "    return 0;\n",
+        "}\n"
+      ],
       "metadata": {
         "role": "file",
         "filename": "src/main.cpp"
@@ -41,12 +103,24 @@
     {
       "kind": "markup",
       "language": "markdown",
-      "value": "The cell below is the asset. Its language is `plaintext`, so it is not a source\nfile — the **filename** is what puts it in the project. Edit the text and re-run\nany cell of this project to see the new contents come back out.\n\n(Never given a filename, a non-source cell belongs to no project and is left\nalone. That is the opt-in: there is no sensible auto-name for an unknown\nlanguage.)"
+      "value": [
+        "The cell below is the asset. Its language is `plaintext`, so it is not a source\n",
+        "file — the **filename** is what puts it in the project. Edit the text and re-run\n",
+        "any cell of this project to see the new contents come back out.\n",
+        "\n",
+        "(Never given a filename, a non-source cell belongs to no project and is left\n",
+        "alone. That is the opt-in: there is no sensible auto-name for an unknown\n",
+        "language.)"
+      ]
     },
     {
       "kind": "code",
       "language": "plaintext",
-      "value": "the build dir is assembled fresh for every run\nheaders and data files land in it, only translation units are compiled\nnothing here survives to the next build\n",
+      "value": [
+        "the build dir is assembled fresh for every run\n",
+        "headers and data files land in it, only translation units are compiled\n",
+        "nothing here survives to the next build\n"
+      ],
       "metadata": {
         "role": "file",
         "filename": "data/message.txt"
