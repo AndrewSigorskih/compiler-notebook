@@ -7,7 +7,8 @@ import * as vscode from 'vscode';
 
 import { buildAndRun } from './build';
 import { NotebookDiagnostics } from './diagnostics';
-import { NOTEBOOK_TYPE, Project } from './model';
+import { SOURCE_LANGUAGE_IDS } from './languages';
+import { BUILDSPEC_LANGUAGE_ID, NOTEBOOK_TYPE, Project } from './model';
 import { CellAdapter, resolveNotebook } from './notebook';
 import { StreamKind, StreamTarget, TruncatingSink } from './output';
 
@@ -73,7 +74,10 @@ export class CompilerNotebookController {
 			NOTEBOOK_TYPE,
 			'Compiler Notebook'
 		);
-		this.controller.supportedLanguages = ['cpp', 'c', 'rust', 'zig', 'toml'];
+		// Derived, never listed: adding a language to the table must be the only
+		// edit needed (CLAUDE.md §10). Buildspec cells are executable too — running
+		// one builds its project — so the buildspec language joins the source ones.
+		this.controller.supportedLanguages = [...SOURCE_LANGUAGE_IDS, BUILDSPEC_LANGUAGE_ID];
 		this.controller.supportsExecutionOrder = true;
 		this.controller.description = 'Compile and run notebook projects';
 		this.controller.executeHandler = (cells, notebook) => this.execute(cells, notebook);
