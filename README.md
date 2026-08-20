@@ -52,6 +52,14 @@ See [CLAUDE.md](CLAUDE.md) for the full design.
   keeping the **head** — the first error is the one that caused the rest — and
   the command lines and exit code are never cut.
 - Cancellation kills the child process; temp dirs are always cleaned up.
+- **Save binary**: once a project has been built, its buildspec cell grows a
+  `$(save) Save app` item on the right of its status bar — pick a destination and
+  the binary is copied out with its executable bit. The build dir it comes from
+  is kept for exactly this, one per buildspec cell: the next build of that
+  project deletes the previous one, and closing the notebook releases it. Temp
+  dirs do not survive a reboot, so a build that has since vanished says so and
+  asks you to run it again instead of failing obscurely. Also on the command
+  palette as **Compiler Notebook: Save Built Binary**.
 - **New project**: an empty code cell offers `$(rocket) New project` in its
   status bar — pick a language and the cell becomes a buildspec cell filled in
   with that language's defaults, followed by an empty source cell in that
@@ -126,3 +134,5 @@ code --install-extension compiler-notebook-0.0.1.vsix
 | `src/diagnostics.ts` | Soft problems as editor squiggles on a `DiagnosticCollection`. |
 | `src/filenames.ts` | Cell status bar items and the rename command. |
 | `src/newproject.ts` | The "New project" affordance on an empty cell. |
+| `src/artifacts.ts` | Retained build dirs: one per buildspec cell, plus the stale sweep. No `vscode` import. |
+| `src/savebinary.ts` | The "Save binary" status bar item, dialog and copy. |

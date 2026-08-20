@@ -30,11 +30,35 @@ export interface CancelToken {
 	onCancellationRequested(listener: () => void): { dispose(): void };
 }
 
+/** Prefix of every build dir, so leftovers are recognisable (CLAUDE.md §10). */
+export const BUILD_DIR_PREFIX = 'compiler-notebook-';
+
+/** A binary that outlived its build, because the caller asked to keep it. */
+export interface BuildArtifact {
+	/** The build dir, now owned by the caller — including deleting it. */
+	readonly dir: string;
+	/** Absolute path of the produced binary. */
+	readonly binary: string;
+	/** Its name on disk: `app`, or `app.exe` on Windows. */
+	readonly name: string;
+}
+
+export interface BuildOptions {
+	/**
+	 * Keep the build dir when a binary came out of it, and report it as
+	 * `result.artifact`. Off by default: a build cleans up after itself unless
+	 * someone takes responsibility for the dir.
+	 */
+	readonly keepBuildDir?: boolean;
+}
+
 export interface BuildResult {
 	readonly success: boolean;
 	readonly compileExitCode: number | null;
 	readonly runExitCode?: number | null;
 	readonly cancelled: boolean;
+	/** Only set when `keepBuildDir` was asked for and a binary exists. */
+	readonly artifact?: BuildArtifact;
 }
 
 interface SpawnResult {
@@ -156,25 +180,53 @@ function dashOStyleFallback(context: {
 	return [...context.flags, ...context.sources, '-o', context.binary];
 }
 
+/** Cleanup must never fail a build, so every removal is best-effort. */
+export async function removeBuildDir(dir: string): Promise<void> {
+	await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
+}
+
+async function describeArtifact(dir: string, spec: BuildSpec): Promise<BuildArtifact | undefined> {
+	// The compiler exiting 0 is not proof that the file we expect exists — a
+	// buildspec can pass flags that change or suppress the output.
+	const name = binaryName(spec.output);
+	const binary = path.join(dir, name);
+	try {
+		const stat = await fs.stat(binary);
+		return stat.isFile() ? { dir, binary, name } : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 export async function buildAndRun<T extends CellLike>(
 	project: Project<T>,
 	sink: OutputSink,
-	token: CancelToken
+	token: CancelToken,
+	options: BuildOptions = {}
 ): Promise<BuildResult> {
-	const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'compiler-notebook-'));
+	const dir = await fs.mkdtemp(path.join(os.tmpdir(), BUILD_DIR_PREFIX));
+	let result: BuildResult;
 	try {
-		return await buildAndRunIn(dir, project, sink, token);
-	} finally {
-		// Survive leftover dirs: cleanup failure must never fail the build.
-		await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
+		result = await buildAndRunIn(dir, project, sink, token, options);
+	} catch (err) {
+		await removeBuildDir(dir);
+		throw err;
 	}
+
+	// The dir survives only when someone is taking it: an artifact handed back is
+	// a transfer of ownership, anything else is cleaned up here as always.
+	if (!result.artifact) {
+		await removeBuildDir(dir);
+	}
+	return result;
 }
 
 async function buildAndRunIn<T extends CellLike>(
 	dir: string,
 	project: Project<T>,
 	sink: OutputSink,
-	token: CancelToken
+	token: CancelToken,
+	options: BuildOptions
 ): Promise<BuildResult> {
 	const { spec, files } = project;
 
@@ -220,9 +272,14 @@ async function buildAndRunIn<T extends CellLike>(
 		return { success: false, compileExitCode: compile.exitCode, cancelled: false };
 	}
 
+	// Worked out once, here: from this point on every exit path has a binary to
+	// hand back, including a run that fails or is cancelled — a program that
+	// crashes is exactly one someone may want to keep and debug.
+	const artifact = options.keepBuildDir ? await describeArtifact(dir, spec) : undefined;
+
 	if (spec.mode === 'build') {
 		sink.info('\nCompilation succeeded.\n');
-		return { success: true, compileExitCode: 0, cancelled: false };
+		return { success: true, compileExitCode: 0, cancelled: false, artifact };
 	}
 
 	const exePath = path.join(dir, binaryName(spec.output));
@@ -231,11 +288,23 @@ async function buildAndRunIn<T extends CellLike>(
 	const run = await runProcess(exePath, [], dir, sink, token);
 	if (run.spawnError) {
 		sink.stderr(`Failed to start the produced binary: ${run.spawnError.message}\n`);
-		return { success: false, compileExitCode: 0, runExitCode: null, cancelled: run.cancelled };
+		return {
+			success: false,
+			compileExitCode: 0,
+			runExitCode: null,
+			cancelled: run.cancelled,
+			artifact
+		};
 	}
 	if (run.cancelled) {
 		sink.info('\nRun cancelled.\n');
-		return { success: false, compileExitCode: 0, runExitCode: run.exitCode, cancelled: true };
+		return {
+			success: false,
+			compileExitCode: 0,
+			runExitCode: run.exitCode,
+			cancelled: true,
+			artifact
+		};
 	}
 
 	sink.info(`\n[exit code ${run.exitCode ?? `signal ${run.signal}`}]\n`);
@@ -243,6 +312,7 @@ async function buildAndRunIn<T extends CellLike>(
 		success: run.exitCode === 0,
 		compileExitCode: 0,
 		runExitCode: run.exitCode,
-		cancelled: false
+		cancelled: false,
+		artifact
 	};
 }

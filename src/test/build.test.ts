@@ -38,16 +38,32 @@ echo "error: something went wrong" >&2
 exit 3
 `;
 
+/** Compiles fine; the program it writes exits 7. */
+const EXITING_COMPILER = `#!/bin/sh
+out=a.out
+prev=
+for arg in "$@"; do
+  if [ "$prev" = "-o" ]; then out="$arg"; fi
+  prev="$arg"
+done
+printf '#!/bin/sh\\nexit 7\\n' > "$out"
+chmod +x "$out"
+exit 0
+`;
+
 let scriptDir: string;
 let stubPath: string;
 let failingPath: string;
+let exitingPath: string;
 
 before(async () => {
 	scriptDir = await fs.mkdtemp(path.join(os.tmpdir(), 'compiler-notebook-test-'));
 	stubPath = path.join(scriptDir, 'stub-cc');
 	failingPath = path.join(scriptDir, 'failing-cc');
+	exitingPath = path.join(scriptDir, 'exiting-cc');
 	await fs.writeFile(stubPath, STUB_COMPILER, { mode: 0o755 });
 	await fs.writeFile(failingPath, FAILING_COMPILER, { mode: 0o755 });
+	await fs.writeFile(exitingPath, EXITING_COMPILER, { mode: 0o755 });
 });
 
 after(async () => {
@@ -305,6 +321,51 @@ describe('buildAndRun', { skip: POSIX ? false : 'needs a POSIX shell' }, () => {
 		assert.notStrictEqual(first, second);
 		await assert.rejects(() => fs.stat(first));
 		await assert.rejects(() => fs.stat(second));
+	});
+
+	test('keepBuildDir hands the build dir over instead of deleting it', async () => {
+		const sink = new Recorder();
+		const result = await buildAndRun(
+			project([{ filename: 'main.cpp' }]),
+			sink,
+			token,
+			{ keepBuildDir: true }
+		);
+
+		assert.ok(result.artifact, 'expected an artifact');
+		assert.strictEqual(result.artifact.name, process.platform === 'win32' ? 'app.exe' : 'app');
+		assert.strictEqual((await fs.stat(result.artifact.binary)).isFile(), true);
+		assert.strictEqual((await fs.stat(result.artifact.dir)).isDirectory(), true);
+
+		await fs.rm(result.artifact.dir, { recursive: true, force: true });
+	});
+
+	test('a failed build keeps nothing, whatever was asked for', async () => {
+		const sink = new Recorder();
+		const result = await buildAndRun(
+			project([{ filename: 'main.cpp' }], { compiler: failingPath }),
+			sink,
+			token,
+			{ keepBuildDir: true }
+		);
+
+		assert.strictEqual(result.artifact, undefined);
+		const dir = /\$ cd (\S+)/.exec(sink.text)![1];
+		await assert.rejects(() => fs.stat(dir));
+	});
+
+	test('a run that exits non-zero still keeps its binary', async () => {
+		const sink = new Recorder();
+		const result = await buildAndRun(
+			project([{ filename: 'main.cpp' }], { compiler: exitingPath, mode: 'run' }),
+			sink,
+			token,
+			{ keepBuildDir: true }
+		);
+
+		assert.strictEqual(result.success, false);
+		assert.ok(result.artifact, 'a crashing program is one worth keeping');
+		await fs.rm(result.artifact.dir, { recursive: true, force: true });
 	});
 
 	test('a project with no compilable files fails with an explanation', async () => {

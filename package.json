@@ -2,7 +2,7 @@
   "name": "compiler-notebook",
   "displayName": "Compiler Notebook",
   "description": "Jupyter-like notebooks for compiled languages (C++, C, Rust, Zig, Go)",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "license": "MIT",
   "publisher": "andreysigorskikh",
   "private": true,
@@ -31,6 +31,11 @@
       {
         "command": "compilerNotebook.newProject",
         "title": "New Project (Buildspec Cell)",
+        "category": "Compiler Notebook"
+      },
+      {
+        "command": "compilerNotebook.saveBinary",
+        "title": "Save Built Binary",
         "category": "Compiler Notebook"
       }
     ],

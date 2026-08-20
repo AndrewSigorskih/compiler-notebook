@@ -5,12 +5,14 @@
 
 import * as vscode from 'vscode';
 
+import { ArtifactStore } from './artifacts';
 import { buildAndRun } from './build';
 import { NotebookDiagnostics } from './diagnostics';
 import { SOURCE_LANGUAGE_IDS } from './languages';
 import { BUILDSPEC_LANGUAGE_ID, NOTEBOOK_TYPE, Project } from './model';
 import { CellAdapter, resolveNotebook } from './notebook';
 import { StreamKind, StreamTarget, TruncatingSink } from './output';
+import { artifactKey } from './savebinary';
 
 const CONTROLLER_ID = 'compiler-notebook-controller';
 
@@ -68,7 +70,10 @@ export class CompilerNotebookController {
 	private readonly controller: vscode.NotebookController;
 	private executionOrder = 0;
 
-	constructor(private readonly diagnostics: NotebookDiagnostics) {
+	constructor(
+		private readonly diagnostics: NotebookDiagnostics,
+		private readonly artifacts: ArtifactStore
+	) {
 		this.controller = vscode.notebooks.createNotebookController(
 			CONTROLLER_ID,
 			NOTEBOOK_TYPE,
@@ -191,8 +196,21 @@ export class CompilerNotebookController {
 
 		let success = false;
 		try {
-			const result = await buildAndRun(project, sink, execution.token);
+			const result = await buildAndRun(project, sink, execution.token, { keepBuildDir: true });
 			success = result.success;
+
+			const key = artifactKey(primary);
+			if (result.artifact) {
+				this.artifacts.record(key, result.artifact, project.spec.output);
+				sink.info(
+					`\nBinary kept at ${result.artifact.binary}\n` +
+						`Use "Save ${result.artifact.name}" in this cell's status bar to copy it out.\n`
+				);
+			} else {
+				// A build that produced nothing must not leave the previous build's
+				// binary offered here: the cell would be advertising stale output.
+				this.artifacts.forget(key);
+			}
 		} catch (err) {
 			sink.info(`Internal error: ${err instanceof Error ? err.stack : String(err)}\n`);
 		}

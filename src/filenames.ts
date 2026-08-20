@@ -9,10 +9,12 @@
 
 import * as vscode from 'vscode';
 
+import { ArtifactStore } from './artifacts';
 import { BUILDSPEC_LANGUAGE_ID, NOTEBOOK_TYPE } from './model';
 import { isEmptyCodeCell, newProjectItem } from './newproject';
 import { CellAdapter, resolveNotebook } from './notebook';
 import { sanitizeFilename, statedFilename } from './project';
+import { artifactKey, saveBinaryItem } from './savebinary';
 
 export const RENAME_COMMAND = 'compilerNotebook.renameFileCell';
 
@@ -29,10 +31,13 @@ export class CellStatusBarProvider implements vscode.NotebookCellStatusBarItemPr
 
 	readonly onDidChangeCellStatusBarItems = this.changed.event;
 
-	constructor() {
+	constructor(private readonly artifacts: ArtifactStore) {
 		// A name can change without its own cell being touched — inserting a
 		// buildspec above re-scopes every cell below it — so repaint them all.
 		this.disposables.push(
+			// A finished build is what makes "Save binary" appear, and it changes no
+			// cell text, so the store says when to repaint.
+			this.artifacts.onDidChange(() => this.scheduleRepaint()),
 			vscode.workspace.onDidChangeNotebookDocument((event) => {
 				if (event.notebook.notebookType === NOTEBOOK_TYPE) {
 					this.scheduleRepaint();
@@ -100,6 +105,11 @@ export class CellStatusBarProvider implements vscode.NotebookCellStatusBarItemPr
 				`output: ${project.spec.output}`
 			].join('\n');
 			items.push(item);
+
+			const artifact = this.artifacts.get(artifactKey(cell));
+			if (artifact) {
+				items.push(saveBinaryItem(cell, artifact));
+			}
 			return items;
 		}
 
