@@ -129,6 +129,8 @@ export function buildCommand<T extends CellLike>(
 	if (config?.inputs === 'root') {
 		const root = selectRoot(config, compilable);
 		sources = root ? [root] : [];
+	} else if (config?.inputs === 'flat') {
+		sources = compilable.filter((file) => !file.filename.includes('/'));
 	}
 
 	const names = sources.map((file) => file.filename);

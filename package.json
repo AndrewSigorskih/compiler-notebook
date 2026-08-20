@@ -1,8 +1,8 @@
 {
   "name": "compiler-notebook",
   "displayName": "Compiler Notebook",
-  "description": "Jupyter-like notebooks for compiled languages (C++, Rust, Zig)",
-  "version": "0.0.10",
+  "description": "Jupyter-like notebooks for compiled languages (C++, C, Rust, Zig, Go)",
+  "version": "0.0.11",
   "license": "MIT",
   "publisher": "andreysigorskikh",
   "private": true,

@@ -11,7 +11,13 @@ export type CompilerInputs =
 	/** Every translation unit goes on the command line (C, C++). */
 	| 'all'
 	/** One root file; the rest are pulled in by the language (Rust, Zig). */
-	| 'root';
+	| 'root'
+	/**
+	 * Every translation unit in the build-dir root, and only those (Go): the
+	 * compiler refuses a file list spanning directories, since a sub-directory is
+	 * a separate package it expects to resolve by import instead.
+	 */
+	| 'flat';
 
 export interface CompileContext {
 	readonly flags: readonly string[];
@@ -95,6 +101,22 @@ export const LANGUAGES: Readonly<Record<string, LanguageConfig>> = {
 			'--name',
 			context.output
 		]
+	},
+	go: {
+		sourceExtension: '.go',
+		defaultCompiler: 'go',
+		// Go has no optimisation or standard-version flags: the toolchain version
+		// decides both, and `go.mod` states the language version when there is one.
+		defaultFlags: [],
+		compileExtensions: ['.go'],
+		// `go build a.go b.go` insists every named file live in one directory, so
+		// only the build-dir root goes on the command line. A sub-directory is a
+		// separate package, reached by import once the project has a `go.mod` cell.
+		inputs: 'flat',
+		mainPattern: /\bfunc\s+main\s*\(/,
+		// `go build -o app main.go`: a subcommand, and `-o` must come before the
+		// file list — after it, go reads the flag as another source file.
+		buildArgs: (context) => ['build', ...context.flags, '-o', context.binary, ...context.sources]
 	}
 };
 

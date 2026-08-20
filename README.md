@@ -14,12 +14,16 @@ See [CLAUDE.md](CLAUDE.md) for the full design.
   edited rather than the whole cell, and two people editing different parts of a
   cell no longer conflict. Files written with the old single-string form still
   open, and convert on the next save.
-- **C, C++, Rust and Zig.** A project's language comes from its cells, and with
-  it the compiler, the default flags and the shape of the command line — all
+- **C, C++, Rust, Zig and Go.** A project's language comes from its cells, and
+  with it the compiler, the default flags and the shape of the command line — all
   from one table in `src/languages.ts`. C and C++ hand every translation unit to
   the compiler; Rust and Zig are pointed at a single **root** file (the cell with
-  the entry point) and reach the rest through `mod` / `@import`. Zig has no `-o`,
-  so it gets `zig build-exe main.zig --name app`.
+  the entry point) and reach the rest through `mod` / `@import`; Go takes the
+  files in the build-dir root, since it refuses a file list spanning directories
+  and treats a sub-directory as its own package. Zig has no `-o`, so it gets
+  `zig build-exe main.zig --name app`; Go wants `-o` before the files, so it gets
+  `go build -o app main.go`. Go needs no module for a flat `package main`; add a
+  `go.mod` asset cell and sub-package cells become importable.
 - **Buildspec cells**: a `toml` cell opens a project and configures it. All four
   keys are optional; unknown keys and bad values warn instead of failing.
 
@@ -86,9 +90,13 @@ example and run a cell:
 | `examples/assets.cnb` | Sub-directories in filenames, an asset cell read at runtime. |
 | `examples/rust.cnb` | A Rust crate across two cells, joined by `mod`. |
 | `examples/zig.cnb` | A Zig program across two cells, joined by `@import`. |
+| `examples/go.cnb` | A flat `package main` across two cells, then a `go.mod` and a sub-package. |
 
-Zig cells need the Zig extension installed for `zig` to exist as a language id
-(and for highlighting); `rust`, `c` and `cpp` are built into VS Code.
+Zig and Go cells need their language extension installed for `zig` / `go` to
+exist as a language id (and for highlighting); `rust`, `c` and `cpp` are built
+into VS Code. If a compiler is installed somewhere the extension host's `PATH`
+does not reach — `/usr/local/go/bin` is a common one — point at it directly with
+`compiler = "/usr/local/go/bin/go"` in the buildspec.
 
 Packaging:
 

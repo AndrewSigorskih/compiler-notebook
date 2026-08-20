@@ -190,6 +190,28 @@ describe('buildCommand', () => {
 		assert.deepStrictEqual(command.sources, ['a.zig']);
 	});
 
+	test('go uses a subcommand and puts -o before the file list', () => {
+		const command = buildCommand(
+			spec('go'),
+			files([
+				{ filename: 'greet.go', value: 'package main' },
+				{ filename: 'main.go', value: 'package main\nfunc main() {}' }
+			])
+		);
+		assert.deepStrictEqual(command.args, ['build', '-o', binary, 'greet.go', 'main.go']);
+	});
+
+	test('go is handed the build-dir root only: a sub-dir is a separate package', () => {
+		const command = buildCommand(
+			spec('go'),
+			files([
+				{ filename: 'main.go', value: 'package main\nfunc main() {}' },
+				{ filename: 'greet/greet.go', value: 'package greet' }
+			])
+		);
+		assert.deepStrictEqual(command.sources, ['main.go']);
+	});
+
 	test('an unknown language falls back to a -o command line', () => {
 		const command = buildCommand(spec(undefined), files([{ filename: 'a.cpp' }]));
 		assert.deepStrictEqual(command.args, ['a.cpp', '-o', binary]);

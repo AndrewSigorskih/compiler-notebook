@@ -20,6 +20,7 @@
       "language": "toml",
       "value": [
         "# Defaults for a rust project: rustc --edition=2021 -O\n",
+        "compiler = \"rustc\"\n",
         "mode   = \"run\"\n",
         "output = \"greeter\"\n"
       ]

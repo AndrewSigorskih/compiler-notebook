@@ -21,6 +21,7 @@
       "value": [
         "# Defaults for a zig project: the `zig` compiler, no flags (Debug).\n",
         "# Add e.g. flags = [\"-OReleaseFast\"] to change that.\n",
+        "compiler = \"zig\"\n",
         "mode   = \"run\"\n",
         "output = \"greeter\"\n"
       ]

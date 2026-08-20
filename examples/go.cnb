@@ -1,0 +1,141 @@
+{
+  "version": 2,
+  "cells": [
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "value": [
+        "# Go\n",
+        "\n",
+        "Go fits the notebook model with one wrinkle worth knowing: **`go build` refuses a\n",
+        "file list that spans directories**. Every cell whose file lands in the build dir\n",
+        "root goes on the command line; a sub-directory is a separate package, which Go\n",
+        "expects to resolve by *import* instead. The second project below shows that.\n",
+        "\n",
+        "No `GOPATH`, no module, no scaffolding: a flat `package main` builds as is."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "toml",
+      "value": [
+        "# go project. Every key is optional; these are the defaults.\n",
+        "compiler = \"go\"\n",
+        "mode     = \"run\"\n",
+        "output   = \"greeter\"\n"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "go",
+      "value": [
+        "package main\n",
+        "\n",
+        "import \"fmt\"\n",
+        "\n",
+        "// Same package as main.go, just a different cell. Both files sit in the build\n",
+        "// dir root, so both are named on the go build command line.\n",
+        "func Greet(name string) string {\n",
+        "\treturn fmt.Sprintf(\"hello, %s, from a compiler notebook\", name)\n",
+        "}\n"
+      ],
+      "metadata": {
+        "role": "file",
+        "filename": "greet.go"
+      }
+    },
+    {
+      "kind": "code",
+      "language": "go",
+      "value": [
+        "package main\n",
+        "\n",
+        "import \"fmt\"\n",
+        "\n",
+        "func main() {\n",
+        "\tfor _, name := range []string{\"world\", \"go\"} {\n",
+        "\t\tfmt.Println(Greet(name))\n",
+        "\t}\n",
+        "}\n"
+      ],
+      "metadata": {
+        "role": "file",
+        "filename": "main.go"
+      }
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "value": [
+        "## A module, for more than one package\n",
+        "\n",
+        "Once a project wants a *second package*, it needs a `go.mod` — that is what turns\n",
+        "the build dir into a module and makes `demo/greet` importable. `go.mod` is written\n",
+        "by an **asset cell**: any language, but explicitly named, so it is copied into the\n",
+        "build dir and never handed to the compiler.\n",
+        "\n",
+        "Only `main.go` is on the command line here. `greet/greet.go` is reached by import,\n",
+        "the same way Rust reaches a `mod` and Zig an `@import`."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "toml",
+      "value": [
+        "compiler = \"go\"\n",
+        "output = \"modular\""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "go.mod",
+      "value": [
+        "module demo\n",
+        "\n",
+        "go 1.21\n"
+      ],
+      "metadata": {
+        "role": "file",
+        "filename": "go.mod"
+      }
+    },
+    {
+      "kind": "code",
+      "language": "go",
+      "value": [
+        "package greet\n",
+        "\n",
+        "import \"fmt\"\n",
+        "\n",
+        "func Hello(name string) string {\n",
+        "\treturn fmt.Sprintf(\"hello, %s, from package greet\", name)\n",
+        "}\n"
+      ],
+      "metadata": {
+        "role": "file",
+        "filename": "greet/greet.go"
+      }
+    },
+    {
+      "kind": "code",
+      "language": "go",
+      "value": [
+        "package main\n",
+        "\n",
+        "import (\n",
+        "\t\"fmt\"\n",
+        "\n",
+        "\t\"demo/greet\"\n",
+        ")\n",
+        "\n",
+        "func main() {\n",
+        "\tfmt.Println(greet.Hello(\"modules\"))\n",
+        "}\n"
+      ],
+      "metadata": {
+        "role": "file",
+        "filename": "main.go"
+      }
+    }
+  ]
+}

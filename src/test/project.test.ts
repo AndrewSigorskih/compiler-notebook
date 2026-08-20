@@ -86,7 +86,9 @@ describe('autoFilename', () => {
 	test('each language spells its entry point its own way', () => {
 		assert.strictEqual(autoFilename(code('rust', 'fn main() {}'), 0), 'main.rs');
 		assert.strictEqual(autoFilename(code('zig', 'pub fn main() void {}'), 0), 'main.zig');
+		assert.strictEqual(autoFilename(code('go', 'package main\n\nfunc main() {}'), 0), 'main.go');
 		assert.strictEqual(autoFilename(code('rust', 'pub fn helper() {}'), 1), 'unit_1.rs');
+		assert.strictEqual(autoFilename(code('go', 'package greet'), 1), 'unit_1.go');
 	});
 });
 
@@ -181,6 +183,25 @@ describe('resolveProjects', () => {
 		const zig = resolveProjects([code('toml', ''), code('zig', 'pub fn main() void {}')]);
 		assert.strictEqual(zig.projects[0].spec.compiler, 'zig');
 		assert.strictEqual(zig.projects[0].spec.language, 'zig');
+
+		const go = resolveProjects([code('toml', ''), code('go', 'package main\nfunc main() {}')]);
+		assert.strictEqual(go.projects[0].spec.compiler, 'go');
+		assert.strictEqual(go.projects[0].spec.language, 'go');
+		assert.deepStrictEqual(go.projects[0].spec.flags, []);
+	});
+
+	test('a go.mod asset cell joins the project without deciding its language', () => {
+		const result = resolveProjects([
+			code('toml', ''),
+			code('go.mod', 'module demo\n\ngo 1.21\n', { filename: 'go.mod' }),
+			code('go', 'package main\nfunc main() {}')
+		]);
+
+		assert.deepStrictEqual(
+			result.projects[0].files.map((f) => f.filename),
+			['go.mod', 'main.go']
+		);
+		assert.strictEqual(result.projects[0].spec.compiler, 'go');
 	});
 
 	test('a header-only cell does not decide the project language', () => {
